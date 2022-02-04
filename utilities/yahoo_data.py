@@ -95,7 +95,7 @@ class YahooDataLoader():
         
         if is_data_returned and save:
             if file_save == '':
-                self._file_save_last_ = f'data/{self.ticker}_{name}.csv'
+                self._file_save_last_ = f'data/{self.ticker}_{name}.csv.gz'
             else:
                 self._file_save_last_ = file_save
 
@@ -109,10 +109,10 @@ class YahooDataLoader():
                 index_select = (df0['date']<self.date_start) | (df0['date']>=self.date_end_ex)
                 df0 = pd.concat([df0[index_select], df]).sort_values('date').reset_index(drop=True)
                 self.printfunc(f"{self.ticker}: Amended {name} data file contains {len(df0)} rows over {df0['date'].nunique()} dates from {df0['date'].min().date()} to {df0['date'].max().date()}.")
-                df0.to_csv(self._file_save_last_, index=False)
+                df0.to_csv(self._file_save_last_, index=False, compression='gzip')
             else:
                 self.printfunc(f"{self.ticker}: Save {name} data at {self._file_save_last_}.")
-                df.to_csv(self._file_save_last_, index=False)
+                df.to_csv(self._file_save_last_, index=False, compression='gzip')
 
         return df
 
@@ -126,7 +126,7 @@ class YahooDataLoader():
             If True, save the queried data to a csv specified by `file_save`.
             If the csv file already exists, amend the existing file with the queried data.
         file_save: str
-            The csv file to save the queried data. Default to 'data/<ticker>_EOD.csv'.
+            The csv file to save the queried data. Default to 'data/<ticker>_EOD.csv.gz'.
             
         Returns
         -------
@@ -157,7 +157,7 @@ class YahooDataLoader():
             If True, save the queried data to a csv specified by `file_save`.
             If the csv file already exists, amend the existing file with the queried data.
         file_save: str
-            The csv file to save the queried data. Default to 'data/<ticker>_dividend.csv'.
+            The csv file to save the queried data. Default to 'data/<ticker>_dividend.csv.gz'.
             
         Returns
         -------
