@@ -1,5 +1,5 @@
 """
-Grandma Valuation Model.
+Grandma Valuation Model (GVM).
 """
 
 from typing import Tuple
@@ -8,31 +8,30 @@ import pandas as pd
 from sklearn.linear_model import LinearRegression
 import plotly.graph_objects as go
 
-class GrandmaValuationModel():
 
-    def __init__(self, data_input, recent_months=0, train_years=10, date_end=None, col_price='close', printfunc=print) -> None:
+class GrandmaRegression():
+    """
+    The class for (log-)linear regression based Grandma Valuation Model.
+    """
+
+    def __init__(self, recent_months=0, train_years=10, date_end=None, printfunc=print) -> None:
         """
-        Grandma Valuation Model.
+        The class for (log-)linear regression based Grandma Valuation Model.
 
         Parameters
         ----------
-        data_input : pandas.DataFrame
-            Input data with "date" column
-        recent_months : str ("yyyy-mm-dd") | date | None
-            Start date of query. If None, will derive a start date from an existing data file.
-        train_years : str ("yyyy-mm-dd") | date | None
-            End date of query, which is exclusive - the last date returned will be smaller then it.
+        recent_months : int
+            Number of recent months to exclude from model fitting.
+        train_years : int
+            Number of years for model fitting
         date_end : str ("yyyy-mm-dd") | date | None
-            End date of query, which is exclusive - the last date returned will be smaller then it.
-        col_price : str ("yyyy-mm-dd") | date | None
-            End date of query, which is exclusive - the last date returned will be smaller then it.
-        printfunc : a function to output messages, which should handle `end` and `level` arguments.
+            The "current" date. If None, use the last date in the input data when fitting the model.
+        printfunc : func
+            A function to output messages.
         """
-        self.data_input = data_input
         self.recent_months = recent_months
         self.train_years = train_years
         self.date_end = date_end
-        self.col_price = col_price
         self.printfunc = printfunc
 
         self._df_train = None,
@@ -46,43 +45,44 @@ class GrandmaValuationModel():
         self._over_value_years = np.nan
 
 
-    def _splitTrainRecent(self) -> Tuple[pd.DataFrame, pd.DataFrame]:
+    def _splitTrainRecent(self, data_input, col_price) -> Tuple[pd.DataFrame, pd.DataFrame]:
         """
-        Set start and end dates, and load existing data file if needed.
+        Split the input data into train and recent data sets.
+
+        The model will be fitted only on the train data set, and trend will be estimated on both train and recent data sets.
 
         Parameters
         ----------
-        name : str
-            Name used for logging and default file name.
-        load_file : bool
-            If True, load data file stored at `file_name`
-        file_name: str
-            The file containing the existing data.
-            
+        data_input : pandas.DataFrame
+            Input data. It needs to contain a `date` column, and sorted by the date.
+        col_price : str
+            The column name in `data_input` to use as price.
         Returns
         -------
         pandas.DataFrame
-            The loaded data (if any).
+            Train data set.
+        pandas.DataFrame
+            Recent data set.
         """
-        df0 = self.data_input.copy()
+        df0 = data_input.copy()
         if self.date_end is None:
             date_recent_end = df0['date'].max()
         else:
-            date_recent_end = min(self.date_end, date_max = df0['date'].max())
+            date_recent_end = min(pd.to_datetime(self.date_end), date_max = df0['date'].max())
         date_recent_start = date_recent_end - pd.DateOffset(months=self.recent_months) + pd.DateOffset(days=1)
         date_train_end = date_recent_start - pd.DateOffset(days=1)
         date_train_start = date_train_end - pd.DateOffset(years=self.train_years) + pd.DateOffset(days=1)
         date_train_start = max(date_train_start, df0['date'].min())
 
-        cols_select = ['date', self.col_price]
-        cols_map = {self.col_price:'price'}
+        cols_select = ['date', col_price]
+        cols_map = {col_price:'price'}
 
         df_train0 = df0[(df0['date']>=date_train_start) & (df0['date']<=date_train_end)][cols_select].reset_index(drop=True).rename(columns=cols_map)
-        self.printfunc(f"Train data contains {len(df_train0)} rows over {df_train0['date'].nunique()} dates from {df_train0['date'].min().date()} to {df_train0['date'].max().date()}")
+        self.printfunc(f"Train data contains {len(df_train0)} rows over {df_train0['date'].nunique()} dates from {df_train0['date'].min().date()} to {df_train0['date'].max().date()}.")
 
         df_recent0 = df0[(df0['date']>=date_recent_start) & (df0['date']<=date_recent_end)][cols_select].reset_index(drop=True).rename(columns=cols_map)
         if len(df_recent0) > 0:
-            self.printfunc(f"Recent data contains {len(df_recent0)} rows over {df_recent0['date'].nunique()} dates from {df_recent0['date'].min().date()} to {df_recent0['date'].max().date()}")
+            self.printfunc(f"Recent data contains {len(df_recent0)} rows over {df_recent0['date'].nunique()} dates from {df_recent0['date'].min().date()} to {df_recent0['date'].max().date()}.")
         else:
             df_recent0 = pd.DataFrame()
             self.printfunc(f"No recent data specified.")
@@ -90,10 +90,29 @@ class GrandmaValuationModel():
         return df_train0, df_recent0
 
 
-    def fitTransform(self, log=True, n_std=2):
+    def fitTransform(self, data_input, col_price='close_adj', log=True, n_std=1.5) -> Tuple[pd.DataFrame, pd.DataFrame]:
         """
+        Fit model, identify outliers, and estimate trend.
+
+        Parameters
+        ----------
+        data_input : pandas.DataFrame
+            Input data. It needs to contain a `date` column, and sorted by the date.
+        col_price : str
+            The column name in `data_input` to use as price.
+        log : bool
+            If True, fit log-linear regression. If False, fit linear regression.
+        n_std : float
+            Outliers are identified by as examples with residuals outside `mean ± n_std * std`.
+            
+        Returns
+        -------
+        pandas.DataFrame
+            Train data set with estimated trend.
+        pandas.DataFrame
+            Recent data set with estimated trend.
         """
-        df_train, df_recent = self._splitTrainRecent()
+        df_train, df_recent = self._splitTrainRecent(data_input, col_price)
 
         self.printfunc("Fit regression...", end=' ')
         df_train['x'] = range(len(df_train))
@@ -144,8 +163,31 @@ class GrandmaValuationModel():
         return df_train, df_recent
 
 
-    def evaluateStatistics(self, return_statistics=False):
+    def evaluateValuation(self) -> dict:
         """
+        Evaluate valuation metrics of the fitted data sets with estimated trend.
+
+        This function needs to be executed after `fitTransform()`.
+
+        Parameters
+        ----------
+        (None)
+            
+        Returns
+        -------
+        dict
+            Valuation metrics:
+                `rmse_train`: RMSE of the fitted model on train data, with outliers removed.
+                `train_years`: number of years in train data.
+                `annualized_return`: average annualized return of the estimated trend.
+                `current_price`: most recent price in the data.
+                `base_price`: most recent estimated price in the data, based on the fitted trend.
+                `over_value_range`: `(current_price / base_price) - 1`
+                `over_value_years`:
+                    If annualized_return >= 0.01:
+                        If `over_value_range >= 0`, use `over_value_range / annualized_return` to indicate number of years over-valued.
+                        If `over_value_range < 0`, use `over_value_range * annualized_return` to give more weight to higher annualized retrun.
+                    else: use `nan`, as the model is not suitable to valuate instrument with little or negative growth.
         """
         df_train, df_recent = self._df_train.copy(), self._df_recent.copy()
 
@@ -166,18 +208,43 @@ class GrandmaValuationModel():
         self._base_price = df_combine['trend'].iloc[-1]
         self._over_value_range = self._currenct_price / self._base_price - 1
         self.printfunc(f"Compared to base price {self._base_price:.3f}, the current price {self._currenct_price:.3f} is over-valued by {self._over_value_range:.4f}", end='')
-        self._over_value_years = self._over_value_range/self._annualized_return if self._over_value_range>0 else np.nan
-        if self._over_value_range>0:
+
+        if self._annualized_return >= 0.01:
+            if self._over_value_range >= 0:
+                self._over_value_years = self._over_value_range / self._annualized_return
+            else:
+                self._over_value_years = self._over_value_range * self._annualized_return
             self.printfunc(f" or {self._over_value_years:.2f} years.")
         else:
+            self._over_value_years = np.nan
             self.printfunc(f".")
 
-        if return_statistics:
-            return self._rmse_train, self._train_years, self._annualized_return, self._currenct_price, self._base_price, self._over_value_range, self._over_value_years
+        return {
+            'rmse_train':self._rmse_train,
+            'train_years':self._train_years,
+            'annualized_return':self._annualized_return,
+            'currenct_price':self._currenct_price,
+            'base_price':self._base_price,
+            'over_value_range':self._over_value_range,
+            'over_value_years':self._over_value_years
+            }
 
 
-    def plotTrendline(self, title='a chart'):
+    def plotTrendline(self, title='Price and Trend'):
         """
+        Plot the data with outliers and fitted trend.
+
+        This function needs to be executed after `fitTransform()`.
+
+        Parameters
+        ----------
+        title : str
+            Title of the plot.
+            
+        Returns
+        -------
+        Figure
+            A plotly figure object of the plot.
         """
         df_train, df_recent = self._df_train.copy(), self._df_recent.copy()
         fig = go.Figure()
