@@ -2,6 +2,7 @@
 Utilities for querying data from Yahoo.
 """
 
+from typing import Tuple
 import pandas as pd
 from datetime import date
 import os
@@ -21,20 +22,21 @@ class YahooDataLoader():
         date_end_ex : str ("yyyy-mm-dd") | date | None
             End date of query, which is exclusive - the last date returned will be smaller then it.
             If None, will use the execution date.
-        printfunc : a function to output messages, which should handle `end` and `level` arguments.
+        printfunc : func
+            A function to output messages.
         """
         self.ticker = ticker
         self.date_start = date_start
         self.date_end_ex = date_end_ex
         self.printfunc = printfunc
         
-        self._date_start_ = None
-        self._date_end_ex_ = None
-        self._sec_start_ = None
-        self._sec_end_ = None
-        self._url_eod_ = None
-        self._url_dividend_ = None
-        self._file_name_last_ = '' # file name by the most recent operation
+        self._date_start = None
+        self._date_end_ex = None
+        self._sec_start = None
+        self._sec_end = None
+        self._url_eod = None
+        self._url_dividend = None
+        self._file_name_last = '' # file name by the most recent operation
 
 
     def _getFileAndDates(self, name, load_file, file_name) -> pd.DataFrame:
@@ -59,7 +61,7 @@ class YahooDataLoader():
         df0 = pd.DataFrame()
 
         if load_file or (self.date_start is None):
-            self._file_name_last_ = file_name
+            self._file_name_last = file_name
 
             if os.path.exists(file_name):
                 self.printfunc(f"{self.ticker}: Existing {name} data file found at {file_name}.")
@@ -69,22 +71,22 @@ class YahooDataLoader():
 
         # set start date: derive from the loaded existing file if not specified
         if self.date_start is not None:
-            self._date_start_ = pd.to_datetime(self.date_start)
+            self._date_start = pd.to_datetime(self.date_start)
         else:
             if len(df0)>0:
-                self._date_start_ = df0['date'].max() + pd.DateOffset(days=1)
+                self._date_start = df0['date'].max() + pd.DateOffset(days=1)
             else:
                 raise Exception(f'{file_name} must contain data with a date column, if date_start is None.')
             
-        self._sec_start_ = self._getYahooSec(self._date_start_)
+        self._sec_start = self._getYahooSec(self._date_start)
 
         # set end date: use execution date if not specified
         if self.date_end_ex is None:
-            self._date_end_ex_ = pd.to_datetime(date.today())
+            self._date_end_ex = pd.to_datetime(date.today()) + pd.DateOffset(days=1)
         else:
-            self._date_end_ex_ = pd.to_datetime(self.date_end_ex)
+            self._date_end_ex = pd.to_datetime(self.date_end_ex)
 
-        self._sec_end_ = self._getYahooSec(self._date_end_ex_)
+        self._sec_end = self._getYahooSec(self._date_end_ex)
 
         return df0
 
@@ -134,16 +136,16 @@ class YahooDataLoader():
                 df['date'] = pd.to_datetime(df['date'])
                 self.printfunc(f"{self.ticker}: Queried {name} data contains {len(df)} rows over {df['date'].nunique()} dates from {df['date'].min().date()} to {df['date'].max().date()}.")
             else:
-                self.printfunc(f"{self.ticker}: No {name} data returned.", level=30)
+                self.printfunc(f"{self.ticker}: WARNING: No {name} data returned.")
                 df = pd.DataFrame()
         except:
-            self.printfunc(f"{self.ticker}: Failed to query {name} data!", level=40)
+            self.printfunc(f"{self.ticker}: ERROR: Failed to query {name} data!")
             df = pd.DataFrame()
 
         return df
 
 
-    def _refreshDataFile(self, df_exist, df_query, file_name) -> None:
+    def _refreshDataFile(self, df_exist, df_query, file_name) -> pd.DataFrame:
         """
         Function to refresh the stored data file.
 
@@ -155,23 +157,31 @@ class YahooDataLoader():
             New data queried.
         file_name: str
             The csv file to save the combined data.
+
+        Returns
+        -------
+        pandas.DataFrame
+            The refreshed data.
         """
         if len(df_query)==0:
-            self.printfunc(f"{self.ticker}: No new data to refresh!.", level=30)
-            return None
+            self.printfunc(f"{self.ticker}: WARNING: No new data to refresh.")
+            return df_exist
 
         self._file_save_last_ = file_name
         if len(df_exist)==0:
             self.printfunc(f"{self.ticker}: Save queried data to {file_name}.")
             df_query.to_csv(file_name, index=False, compression='gzip')
+            return df_query
+
         else:
-            date_low = df_query['date'].min()
-            date_high = df_query['date'].max()
-            df = df_exist[(df_exist['date']<date_low) | (df_exist['date']>date_high)]
+            date_low = df_query['date'].min().floor('D')
+            date_high = (df_query['date'].max() + pd.DateOffset(days=1)).floor('D')
+            df = df_exist[(df_exist['date']<date_low) | (df_exist['date']>=date_high)].copy()
             df = pd.concat([df, df_query]).sort_values('date').reset_index(drop=True)
             self.printfunc(f"{self.ticker}: Amended data file contains {len(df)} rows over {df['date'].nunique()} dates from {df['date'].min().date()} to {df['date'].max().date()}.")
 
             df.to_csv(file_name, index=False, compression='gzip')
+            return df
 
 
     def queryEOD(self, save=True, file_name='') -> pd.DataFrame:
@@ -189,7 +199,7 @@ class YahooDataLoader():
         Returns
         -------
         pandas.DataFrame
-            The queried data.
+            If `save=True`, return the refreshed data, else return the queried data.
         """
         if file_name == '':
             file_name = f'data/{self.ticker}_EOD.csv.gz'
@@ -197,10 +207,10 @@ class YahooDataLoader():
 
         s_head = 'https://query1.finance.yahoo.com/v7/finance/download/'
         s_tail = '&interval=1d&events=history&includeAdjustedClose=true'
-        self._url_eod_ = s_head+self.ticker+'?period1='+str(self._sec_start_)+'&period2='+str(self._sec_end_)+s_tail
+        self._url_eod = s_head+self.ticker+'?period1='+str(self._sec_start)+'&period2='+str(self._sec_end)+s_tail
 
         df_query = self._queryYahooUrl(
-            url = self._url_eod_,
+            url = self._url_eod,
             name = 'EOD',
             map_cols={
                 'Date':'date',
@@ -211,9 +221,10 @@ class YahooDataLoader():
             )
         
         if save:
-            self._refreshDataFile(df_exist, df_query, file_name)
-
-        return df_query
+            df_refresh = self._refreshDataFile(df_exist, df_query, file_name)
+            return df_refresh
+        else:
+            return df_query
 
 
     def queryDividend(self, save=False, file_name=''):
@@ -231,7 +242,7 @@ class YahooDataLoader():
         Returns
         -------
         pandas.DataFrame
-            The queried data.
+            If `save=True`, return the refreshed data, else return the queried data.
         """
         if file_name == '':
             file_name = f'data/{self.ticker}_dividend.csv.gz'
@@ -239,15 +250,16 @@ class YahooDataLoader():
 
         s_head = 'https://query1.finance.yahoo.com/v7/finance/download/'
         s_tail = '&interval=1d&events=div&includeAdjustedClose=true'
-        self._url_dividend_ = s_head+self.ticker+'?period1='+str(self._sec_start_)+'&period2='+str(self._sec_end_)+s_tail
+        self._url_dividend = s_head+self.ticker+'?period1='+str(self._sec_start)+'&period2='+str(self._sec_end)+s_tail
 
         df_query = self._queryYahooUrl(
-            url = self._url_dividend_,
+            url = self._url_dividend,
             name = 'dividend',
             map_cols={'Date':'date', 'Dividends':'dividend'}  ,
             )
         
         if save:
-            self._refreshDataFile(df_exist, df_query, file_name)
-
-        return df_query
+            df_refresh = self._refreshDataFile(df_exist, df_query, file_name)
+            return df_refresh
+        else:
+            return df_query

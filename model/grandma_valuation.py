@@ -193,7 +193,7 @@ class GrandmaRegression():
 
         df_train_filter = df_train[~df_train['is_outlier']][['price','trend']]
         self._rmse_train = np.sqrt(((df_train_filter['price'] - df_train_filter['trend'])**2).sum() / len(df_train_filter))
-        self.printfunc(f"Train RMSE = {self._rmse_train:.4f}.", end=' ')
+        self.printfunc(f"Train RMSE = {self._rmse_train:.3}.", end=' ')
 
         date_train_start = df_train['date'].min()
         date_train_end = df_train['date'].max()
@@ -201,20 +201,20 @@ class GrandmaRegression():
         trend_train_start = df_train['trend'].iloc[0]
         trend_train_end = df_train['trend'].iloc[-1]
         self._annualized_return = (trend_train_end / trend_train_start)**(1/self._train_years) - 1
-        self.printfunc(f"Annualized Return = {self._annualized_return:.4f} over {self._train_years:.2f} years.", end=' ')
+        self.printfunc(f"Annualized Return = {self._annualized_return:.3} over {self._train_years:.3} years.", end=' ')
 
         df_combine = pd.concat([df_train, df_recent]).reset_index(drop=True)
         self._currenct_price = df_combine['price'].iloc[-1]
         self._base_price = df_combine['trend'].iloc[-1]
         self._over_value_range = self._currenct_price / self._base_price - 1
-        self.printfunc(f"Compared to base price {self._base_price:.3f}, the current price {self._currenct_price:.3f} is over-valued by {self._over_value_range:.4f}", end='')
+        self.printfunc(f"Compared to base price {self._base_price:.3}, the current price {self._currenct_price:.3} is over-valued by {self._over_value_range:.3}", end='')
 
         if self._annualized_return >= 0.01:
             if self._over_value_range >= 0:
                 self._over_value_years = self._over_value_range / self._annualized_return
             else:
                 self._over_value_years = self._over_value_range * self._annualized_return
-            self.printfunc(f" or {self._over_value_years:.2f} years.")
+            self.printfunc(f" or {self._over_value_years:.3} years.")
         else:
             self._over_value_years = np.nan
             self.printfunc(f".")
