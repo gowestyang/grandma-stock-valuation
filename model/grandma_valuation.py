@@ -65,6 +65,8 @@ class GrandmaRegression():
             Recent data set.
         """
         df0 = data_input.copy()
+        df0 = df0[df0[col_price]>0].reset_index(drop=True)
+
         if self.date_end is None:
             date_recent_end = df0['date'].max()
         else:
