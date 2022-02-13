@@ -1,11 +1,11 @@
 # Grandma Stock Valuation (GSV)
 
-* [Introduction](##Introduction)
-* [Examples](##Examples)
-    * [Valuation of an Instrument](###Valuation-of-an-Instrument)
-    * [Portfolio Allocation of a Group of Instruments](###Portfolio-Allocation-of-a-Group-of-Instruments)
-    * [Python Scripts](###Python-Scripts)
-* [Documentation](##Documentation)
+* [Introduction](#introduction)
+* [Examples](#examples)
+    * [Valuation of an Instrument](#valuation-of-an-instrument)
+    * [Portfolio Allocation of a Group of Instruments](#portfolio-allocation-of-a-group-of-instruments)
+    * [Python Scripts](#python-scripts)
+* [Documentation](#documentation)
 
 <br>
 
@@ -69,8 +69,8 @@ This portfolio selected 5 instruments to provide a near-global converage:
 
 Each instrument was valuated over the same period as described in the SP500 example above, using the same method.
 
-The `portfolio_allocation` column showed that 3073.HK and VPL were suggested to allocate heavily, because they were under-valued.<br>
-The SP500 ETF (IVV), through over-valued, still deserved some allocation.
+The `portfolio_allocation` column showed that 3073.HK and VPL were suggested to be allocated heavily, because they were under-valued.<br>
+The SP500 ETF (IVV), though over-valued, still deserved some allocation in this portfolio.
 
 <br>
 
