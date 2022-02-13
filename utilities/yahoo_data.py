@@ -2,16 +2,25 @@
 Utilities for querying data from Yahoo.
 """
 
-from typing import Tuple
 import pandas as pd
 from datetime import date
 import os
+import logging
+
+def printLevel(msg, level=logging.INFO):
+    """
+    A wrapper over `print` to support `level` argument.
+    """
+    print(msg)
 
 class YahooDataLoader():
+    """
+    Class of the data loader to query data from Yahoo Finance.
+    """
 
-    def __init__(self, ticker, date_start=None, date_end_ex=None, printfunc=print) -> None:
+    def __init__(self, ticker, date_start=None, date_end_ex=None, verbose=2, printfunc=print) -> None:
         """
-        Data loader to query data from Yahoo finance.
+        Initialize Yahoo data loader.
 
         Parameters
         ----------
@@ -22,12 +31,15 @@ class YahooDataLoader():
         date_end_ex : str ("yyyy-mm-dd") | date | None
             End date of query, which is exclusive - the last date returned will be smaller then it.
             If None, will use the execution date.
+        verbose : int
+            2 to print detailed information; 1 to print key information; 0 to suppress print.
         printfunc : func
-            A function to output messages.
+            Function to output messages, which should support the `level` argument.
         """
         self.ticker = ticker
         self.date_start = date_start
         self.date_end_ex = date_end_ex
+        self.verbose = verbose
         self.printfunc = printfunc
         
         self._date_start = None
@@ -36,7 +48,9 @@ class YahooDataLoader():
         self._sec_end = None
         self._url_eod = None
         self._url_dividend = None
-        self._file_name_last = '' # file name by the most recent operation
+        self._file_name_last = '' # file name involved by the most recent operation
+
+        self.default_folder = '__data__'
 
 
     def _getFileAndDates(self, name, load_file, file_name) -> pd.DataFrame:
@@ -46,7 +60,7 @@ class YahooDataLoader():
         Parameters
         ----------
         name : str
-            Name used for logging and default file name.
+            A name used to construct the default file name.
         load_file : bool
             If True, load data file stored at `file_name`
         file_name: str
@@ -64,10 +78,10 @@ class YahooDataLoader():
             self._file_name_last = file_name
 
             if os.path.exists(file_name):
-                self.printfunc(f"{self.ticker}: Existing {name} data file found at {file_name}.")
+                if self.verbose > 0: self.printfunc(f"{self.ticker}: Existing {name} data file found at {file_name}.")
                 df0 = pd.read_csv(file_name)
                 df0['date'] = pd.to_datetime(df0['date'])
-                self.printfunc(f"{self.ticker}: Existing {name} data file contains {len(df0)} rows over {df0['date'].nunique()} dates from {df0['date'].min().date()} to {df0['date'].max().date()}.")
+                if self.verbose > 0: self.printfunc(f"{self.ticker}: Existing {name} data file contains {len(df0)} rows over {df0['date'].nunique()} dates from {df0['date'].min().date()} to {df0['date'].max().date()}.")
 
         # set start date: derive from the loaded existing file if not specified
         if self.date_start is not None:
@@ -76,7 +90,8 @@ class YahooDataLoader():
             if len(df0)>0:
                 self._date_start = df0['date'].max() + pd.DateOffset(days=1)
             else:
-                raise Exception(f'{file_name} must contain data with a date column, if date_start is None.')
+                self.printfunc(f'{file_name} must contain data with a date column, if date_start is None.', level=logging.ERROR)
+                raise Exception('Incorrect inputs.')
             
         self._sec_start = self._getYahooSec(self._date_start)
 
@@ -134,12 +149,12 @@ class YahooDataLoader():
                 if len(map_cols)>0:
                     df.rename(columns=map_cols, inplace=True)
                 df['date'] = pd.to_datetime(df['date'])
-                self.printfunc(f"{self.ticker}: Queried {name} data contains {len(df)} rows over {df['date'].nunique()} dates from {df['date'].min().date()} to {df['date'].max().date()}.")
+                if self.verbose > 0: self.printfunc(f"{self.ticker}: Queried {name} data contains {len(df)} rows over {df['date'].nunique()} dates from {df['date'].min().date()} to {df['date'].max().date()}.")
             else:
-                self.printfunc(f"{self.ticker}: WARNING: No {name} data returned.")
+                self.printfunc(f"{self.ticker}: No {name} data returned.", level=logging.WARNING)
                 df = pd.DataFrame()
         except:
-            self.printfunc(f"{self.ticker}: ERROR: Failed to query {name} data!")
+            self.printfunc(f"{self.ticker}: Failed to query {name} data!", level=logging.ERROR)
             df = pd.DataFrame()
 
         return df
@@ -152,7 +167,7 @@ class YahooDataLoader():
         Parameters
         ----------
         df_exist: pandas.DataFrame
-            Previously stored data loaded.
+            Previously stored data.
         df_query: pandas.DataFrame
             New data queried.
         file_name: str
@@ -164,12 +179,12 @@ class YahooDataLoader():
             The refreshed data.
         """
         if len(df_query)==0:
-            self.printfunc(f"{self.ticker}: WARNING: No new data to refresh.")
+            self.printfunc(f"{self.ticker}: No new data to refresh.", level=logging.WARNING)
             return df_exist
 
         self._file_save_last_ = file_name
         if len(df_exist)==0:
-            self.printfunc(f"{self.ticker}: Save queried data to {file_name}.")
+            if self.verbose > 0: self.printfunc(f"{self.ticker}: Save queried data to {file_name}.")
             df_query.to_csv(file_name, index=False, compression='gzip')
             return df_query
 
@@ -178,7 +193,7 @@ class YahooDataLoader():
             date_high = (df_query['date'].max() + pd.DateOffset(days=1)).floor('D')
             df = df_exist[(df_exist['date']<date_low) | (df_exist['date']>=date_high)].copy()
             df = pd.concat([df, df_query]).sort_values('date').reset_index(drop=True)
-            self.printfunc(f"{self.ticker}: Amended data file contains {len(df)} rows over {df['date'].nunique()} dates from {df['date'].min().date()} to {df['date'].max().date()}.")
+            if self.verbose > 0: self.printfunc(f"{self.ticker}: Amended data file contains {len(df)} rows over {df['date'].nunique()} dates from {df['date'].min().date()} to {df['date'].max().date()}.")
 
             df.to_csv(file_name, index=False, compression='gzip')
             return df
@@ -194,7 +209,7 @@ class YahooDataLoader():
             If True, save the queried data to a csv specified by `file_name`.
             If the csv file already exists, amend the existing file with the queried data.
         file_name: str
-            The csv file to save the queried data. Default to 'data/<ticker>_EOD.csv.gz'.
+            The csv file to save the queried data. Default to '__data__/<ticker>_EOD.csv.gz'.
             
         Returns
         -------
@@ -202,7 +217,9 @@ class YahooDataLoader():
             If `save=True`, return the refreshed data, else return the queried data.
         """
         if file_name == '':
-            file_name = f'data/{self.ticker}_EOD.csv.gz'
+            file_name = os.path.join(self.default_folder, f'{self.ticker}_EOD.csv.gz')
+            if not os.path.exists(self.default_folder):
+                os.mkdir(self.default_folder)
         df_exist = self._getFileAndDates(name='EOD', load_file=save, file_name=file_name)
 
         s_head = 'https://query1.finance.yahoo.com/v7/finance/download/'
@@ -237,7 +254,7 @@ class YahooDataLoader():
             If True, save the queried data to a csv specified by `file_name`.
             If the csv file already exists, amend the existing file with the queried data.
         file_name: str
-            The csv file to save the queried data. Default to 'data/<ticker>_dividend.csv.gz'.
+            The csv file to save the queried data. Default to '__data__/<ticker>_dividend.csv.gz'.
             
         Returns
         -------
@@ -245,7 +262,9 @@ class YahooDataLoader():
             If `save=True`, return the refreshed data, else return the queried data.
         """
         if file_name == '':
-            file_name = f'data/{self.ticker}_dividend.csv.gz'
+            file_name = os.path.join(self.default_folder, f'{self.ticker}_EOD.csv.gz')
+            if not os.path.exists(self.default_folder):
+                os.mkdir(self.default_folder)
         df_exist = self._getFileAndDates(name='dividend', load_file=save, file_name=file_name)
 
         s_head = 'https://query1.finance.yahoo.com/v7/finance/download/'
