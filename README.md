@@ -1,4 +1,5 @@
 # Grandma Stock Valuation (GSV)
+*A simple, manageable valuation tool and portfolio builder for retail investors - even grandma can use it!*
 
 * [Introduction](#introduction)
 * [Examples](#examples)
@@ -10,7 +11,7 @@
 <br>
 
 ## Introduction
-"Grandma-style" traders look at only the historical daily prices, buy when the price is low, and sell when it is high.
+"Grandma-style" traders look at only the historical daily prices - buy when the price is low - sell when the price is high.
 
 <br>
 
@@ -50,7 +51,7 @@ The following valuation metrics were summarized by the `evaluateValuation()` fun
 * over-valued range: 8.16 %
 * over-valued years: 0.61
 
-The valuation metrics showed that this SP500 ETF was over-valued by 8.16%, while considering the high historical growth, it was over-valued by 0.61 years.
+The valuation metrics showed that this SP500 ETF was over-valued by 8.16% , While considering its high historical growth, it was over-valued by 0.61 years.
 
 <br>
 
@@ -60,7 +61,7 @@ Table below illustrates the **Portfolio Allocator** with default settings.
 
 ![](doc/images/example_portfolio_allocation.jpg)
 
-This portfolio selected 5 instruments to provide a near-global converage:
+This portfolio selected 5 instruments to provide a near-global coverage:
 * iShares Core S&P 500 ETF (IVV)
 * iShares Europe ETF (IEV)
 * SPDR FTSE Greater China ETF (3073.HK)
@@ -77,7 +78,7 @@ The SP500 ETF (IVV), though over-valued, still deserved some allocation in this 
 ### Python Scripts
 Refer to `example_valuation_and_portfolio_allocation.ipynb` for sample scripts to
 * Load data from Yahoo finance
-* Evaluate valuation with GSV model
+* Valuate the instruments with GSV model
 * Visualize the result
 * Construct a portfolio
 
