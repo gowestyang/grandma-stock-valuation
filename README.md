@@ -11,6 +11,7 @@ Please kindly star:star: if you found the project interest:blush:
 * [Examples](#examples)
     * [Valuation of an Instrument](#valuation-of-an-instrument)
     * [Portfolio Allocation of a Group of Instruments](#portfolio-allocation-of-a-group-of-instruments)
+    * [Backtest Result](#backtest-result)
     * [Python Scripts](#python-scripts)
 * [Documentation](#documentation)
 
@@ -78,6 +79,17 @@ Each instrument was valuated over the same period as described in the SP500 exam
 
 The `portfolio_allocation` column showed that 3073.HK and VPL were suggested to be allocated heavily, because they were under-valued.<br>
 The SP500 ETF (IVV), though over-valued, still deserved some allocation in this portfolio.
+
+<br>
+
+### Backtest Result
+
+Figure below is the 5-year backtest result, with default settings, and portfolio rebalanced monthly.
+
+![](doc/images/example_backtest.jpg)
+
+This sample portfolio achieved growth close to SP500, with a global diversification.<br>
+The allocation on average was SP500 (40%), SE Asia (18%), Europe (16%), Developed Asia-Pacific (14%), Greater China (11%).
 
 <br>
 
