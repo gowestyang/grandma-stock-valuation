@@ -1,6 +1,12 @@
 # Grandma Stock Valuation (GSV)
 *A simple, manageable valuation tool and portfolio builder for retail investors - even grandma can use it!*
 
+<br>
+
+Please kindly star:star: if you found the project interest:blush:
+
+<br>
+
 * [Introduction](#introduction)
 * [Examples](#examples)
     * [Valuation of an Instrument](#valuation-of-an-instrument)
