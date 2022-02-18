@@ -45,11 +45,12 @@ grandma-stock-valuation requires
 * pandas
 * scikit-learn
 * Plotly
+* kaleido
 
 <br>
 
 ### User Installation
-You can install grandma-stock-valuation using `pip`:
+If you already have the dependencies installed, you can install grandma-stock-valuation using `pip`:
 
     pip install -U grandma-stock-valuation
 

@@ -43,7 +43,7 @@ def setup_package():
             ],
 
         python_requires=">=3.7",
-        install_requires=["numpy", "pandas", "scikit-learn", "plotly"]
+        install_requires=["numpy", "pandas", "scikit-learn", "plotly", "kaleido"]
     )
 
     setup(**metadata)
