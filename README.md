@@ -1,5 +1,10 @@
 # Grandma Stock Valuation (GSV)
 *A simple, manageable valuation tool and portfolio builder for retail investors - even grandma can use it!*
+<br>
+* *Valuate instrument with historical trends - no sophiscated technical analysis*
+* *Build a flexible portfolio with your personal interest*
+* *Trade at your own pace - you can even trade only once per month/quarter*
+* *Back your investment decision with firm numbers - no more frustration from all the media noise!*
 
 <br>
 
@@ -14,6 +19,7 @@ Please kindly star:star: if you found the project interest:blush:
     * [Backtest Result](#backtest-result)
     * [Python Scripts](#python-scripts)
 * [Documentation](#documentation)
+* [Installation](#installation)
 
 <br>
 
@@ -31,6 +37,7 @@ In addition, the project includes a **portfolio allocator**, which suggests the 
 It allocates larger proportion to more under-valued instruments, with several configurations:
 * Sensitivity to over/under valuation
 * Compensation to the number of instruments
+* Option to include cash as part of the portfolio, in order to realize profit
 
 <br>
 
@@ -94,7 +101,7 @@ The allocation on average was SP500 (40%), SE Asia (18%), Europe (16%), Develope
 <br>
 
 ### Python Scripts
-Refer to `example_valuation_and_portfolio_allocation.ipynb` for sample scripts to
+Refer to `example_valuation_and_portfolio_allocation.ipynb` under `doc` folder for sample scripts to
 * Load data from Yahoo finance
 * Valuate the instruments with GSV model
 * Visualize the result
@@ -104,3 +111,21 @@ Refer to `example_valuation_and_portfolio_allocation.ipynb` for sample scripts t
 
 ## Documentation
 Refer to the `doc` folder for additional documentation.
+
+<br>
+
+## Installation
+### Dependencies
+grandma-stock-valuation requires
+* Python (>=3.7)
+* NumPy
+* pandas
+* scikit-learn
+* Plotly
+
+<br>
+
+### User Installation
+You can install grandma-stock-valuation using `pip`:
+
+    pip install -U grandma-stock-valuation
