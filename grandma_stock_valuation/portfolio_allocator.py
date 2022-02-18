@@ -28,7 +28,7 @@ def allocatePortfolio(valuations, transformation='exponential', scale=None, with
         The suggested portfolio allocation.
     """
     assert transformation in ['exponential', 'sigmoid'], "transformation must be 'exponential' or 'sigmoid'."
-    ar_valuation = np.array(valuations)
+    ar_valuation = np.array(valuations).astype(float)
 
     if scale is None:
         n_instruments = len(ar_valuation) if not with_cash else len(ar_valuation)-1
