@@ -1,10 +1,10 @@
 # Grandma Stock Valuation (GSV)
 *A simple, manageable valuation tool and portfolio builder for retail investors - even grandma can use it!*
 <br>
-* *Valuate instrument with historical trends - no sophiscated technical analysis*
-* *Build a flexible portfolio with your personal interest*
-* *Trade at your own pace - you can even trade only once per month/quarter*
-* *Back your investment decision with firm numbers - no more frustration from all the media noise!*
+* Valuate instrument with historical trends - no sophiscated technical analysis
+* Build a flexible portfolio with your personal interest
+* Trade at your own pace - you can even trade only once per month/quarter
+* Back your investment decision with firm numbers - no more frustration from all the media noise!
 
 <br>
 
