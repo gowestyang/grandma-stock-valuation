@@ -1,5 +1,6 @@
 """
 Grandma Stock Valuation (GSV) Model.
+
 """
 
 from typing import Tuple
@@ -8,20 +9,27 @@ import pandas as pd
 import logging
 from sklearn.linear_model import LinearRegression
 import plotly.graph_objects as go
+from os import mkdir
+from os import path
+from datetime import date
 
-def printLevel(msg, level=logging.INFO):
+
+DEFAULT_OUTPUT_FOLDER = '__output__'
+
+
+def _printLevel(msg, level=logging.INFO):
     """
     A wrapper over `print` to support `level` argument.
     """
     print(msg)
 
 
-class GrandmaRegression():
+class GrandmaStockValuation():
     """
     Class of regression based Grandma Stock Valuation model.
     """
 
-    def __init__(self, recent_months=0, train_years=10, date_end=None, verbose=2, printfunc=printLevel) -> None:
+    def __init__(self, recent_months=0, train_years=10, date_end=None, verbose=0, printfunc=_printLevel) -> None:
         """
         Initialize the Grandma Stock Valuation model.
 
@@ -32,9 +40,9 @@ class GrandmaRegression():
         train_years : int
             Number of years for model fitting
         date_end : str ("yyyy-mm-dd") | date | None
-            The "current" date. If None, use the last date in the input data.
+            The "current" date. If None, use the latest date in the input data.
         verbose : int
-            2 to print detailed information; 1 to print key information; 0 to suppress print.
+            2 to print detailed information; 1 to print high-level information; 0 to suppress print.
         printfunc : func
             Function to output messages, which should support the `level` argument.
         """
@@ -103,7 +111,7 @@ class GrandmaRegression():
         return df_train0, df_recent0
 
 
-    def fitTransform(self, input_data, price_col='close_adj', log=True, n_std=1.5) -> Tuple[pd.DataFrame, pd.DataFrame]:
+    def fitTransform(self, input_data, price_col='close_adj', log=True, n_std=1.5):
         """
         Fit model, identify outliers, and estimate trend.
 
@@ -121,9 +129,7 @@ class GrandmaRegression():
         Returns
         -------
         pandas.DataFrame
-            Train data set with estimated trend.
-        pandas.DataFrame
-            Recent data set with estimated trend.
+            The fitted model
         """
         df_train, df_recent = self._splitTrainRecent(input_data, price_col)
 
@@ -173,7 +179,7 @@ class GrandmaRegression():
         self._df_train, self._df_recent = df_train, df_recent
         if self.verbose > 0: self.printfunc("done!")
 
-        return df_train, df_recent
+        return self
 
 
     def evaluateValuation(self, min_annual_return=0.01) -> dict:
@@ -286,3 +292,126 @@ class GrandmaRegression():
         fig.update_layout(template='plotly_dark', title=title, xaxis_title='date', yaxis_title='price', **kwargs)
         
         return fig
+
+
+def batchValuation(
+    d_instrument_data,
+    init_parameters={'recent_months':0, 'train_years':10, 'date_end':None},
+    fit_parameters={'price_col':'close_adj', 'log':True, 'n_std':1.5},
+    valuate_parameters={'min_annual_return':0.01},
+    save_result=True,
+    metric_file = None,
+    figure_folder = None,
+    verbose=0,
+    printfunc=_printLevel,
+    **kwargs
+    ):
+    """
+    Carry out valuation of a group of instruments, by fitting a model on each instrument.
+
+    Parameters
+    ----------
+    d_instrument_data : dict (str : pandas.dataframe)
+        A dictionary containing the daily price of a group of instruments.
+        Each key should be a ticker, and its value should be the daily price data of the ticker.
+    init_parameters : dict
+        Parameters passed to `GrandmaStockValuation` at initialization.
+    fit_parameters : dict
+        Parameters passed to `GrandmaStockValuation.fitTransform()`.
+    valuate_parameters : dict
+        Parameters passed to `GrandmaStockValuation.evaluateValuation()`.
+    save_result : bool
+        If True, save the valuation metrics into a csv.
+    metric_file : str
+        File to store the valuation metrics.
+        If `None`, save to the default location "__output__/valuation_metrics_<today>.csv".
+    figure_folder : str
+        Folder to store the price charts of each instruments.
+        If `None`, save to the default folder "__output__/images/"
+    verbose : int
+        2 to print detailed information; 1 to print high-level information; 0 to suppress print.
+    printfunc : func
+        Function to output messages, which should support the `level` argument.
+    **kwargs
+        Additional key-word arguments passed to `GrandmaStockValuation.plotTrendline()`.
+
+    Returns
+    -------
+    pandas.DataFrame
+        A table containing valuation, which is the output of `GrandmaStockValuation.evaluateValuation()`, of each instrument.
+    dict (str : figure)
+        A dictionary containing the price chart, which is the output of `GrandmaStockValuation.plotTrendline()`, of each instrument.
+        The keys are the tickers, and values are the figures.
+    """
+    if metric_file is None:
+        metric_file = path.join(DEFAULT_OUTPUT_FOLDER, f'valuation_metrics_{date.today()}.csv')
+        _createDefaultOutputFolder()
+    
+    if figure_folder is None:
+        figure_folder = path.join(DEFAULT_OUTPUT_FOLDER, 'images')
+        _createDefaultOutputFolder()
+
+    l_metrics = []
+    d_fig = {}
+    for ticker, df in d_instrument_data.items():
+
+        if verbose > 0: printfunc(f"Valuating {ticker}...")
+        grandma = GrandmaStockValuation(verbose=verbose, printfunc=printfunc, **init_parameters)
+        grandma.fitTransform(df, **fit_parameters)
+        d_metrics = grandma.evaluateValuation(**valuate_parameters)
+        df_metrics = pd.Series({'ticker':ticker, **d_metrics}).to_frame().T
+        l_metrics.append(df_metrics)
+
+        fig = grandma.plotTrendline(title=ticker, **kwargs)
+        d_fig[ticker] = fig
+        if save_result:
+            fig.write_image(path.join(figure_folder, f'{ticker}.jpeg'))
+    
+    df_metrics = pd.concat(l_metrics, ignore_index=True)
+    if save_result: df_metrics.to_csv(metric_file, index=False)
+
+    return df_metrics, d_fig
+
+
+def _createDefaultOutputFolder():
+    """
+    Create the default output folders if not existed.
+
+    """
+    if not path.exists(DEFAULT_OUTPUT_FOLDER):
+        mkdir(DEFAULT_OUTPUT_FOLDER)
+
+    image_folder = path.join(DEFAULT_OUTPUT_FOLDER, 'images')
+    if not path.exists(image_folder):
+        mkdir(image_folder)
+
+
+def addCashPortfolio(df_valuation_metrics, id_col='ticker', cash_name='cash', value_col='over_value_years', cash_value=0.0):
+    """
+    Add cash into the valuation metrics of an existing portfolio.
+
+    Parameters
+    ----------
+    df_valuation_metrics : pandas.DataFrame
+        A dataframe with the valuation metrics of an existing portfolio.
+        It is usually the output of `grandma_stock_valuation.batchValuation()` function.
+    id_col: str
+        Column in `df_valuation_metrics` as the identifier of the instruments in the portfolio.
+    cash_name: str
+        A name, such as "cash", to be appended to the `id_col`.
+    value_col: str
+        Column in `df_valuation_metrics` with the valuations of each instruments in the portfolio.
+    cash_value: float
+        Valuation of cash, such as 0 (neither over-valued nor under-valued).
+
+    Returns
+    -------
+    pandas.DataFrame
+        The updated valuation metrics with an additonal row indicating cahs.
+    """
+    df_cash = pd.Series({id_col:cash_name, value_col:cash_value}).to_frame().T
+    df_portfolio = pd.concat([df_valuation_metrics, df_cash], ignore_index=True)
+    df_portfolio[value_col] = df_portfolio[value_col].astype(float)
+
+    return df_portfolio
+

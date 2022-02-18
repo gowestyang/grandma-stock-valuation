@@ -4,21 +4,27 @@ Utilities for querying data from Yahoo.
 
 import pandas as pd
 from datetime import date
-import os
 import logging
+from os import mkdir
+from os import path
 
-def printLevel(msg, level=logging.INFO):
+
+DEFAULT_DATA_FOLDER = '__data__'
+
+
+def _printLevel(msg, level=logging.INFO):
     """
     A wrapper over `print` to support `level` argument.
     """
     print(msg)
+
 
 class YahooDataLoader():
     """
     Class of the data loader to query data from Yahoo Finance.
     """
 
-    def __init__(self, ticker, date_start=None, date_end_ex=None, verbose=2, printfunc=print) -> None:
+    def __init__(self, ticker, date_start=None, date_end_ex=None, verbose=0, printfunc=_printLevel) -> None:
         """
         Initialize Yahoo data loader.
 
@@ -50,7 +56,7 @@ class YahooDataLoader():
         self._url_dividend = None
         self._file_name_last = '' # file name involved by the most recent operation
 
-        self.default_folder = '__data__'
+        self.default_folder = DEFAULT_DATA_FOLDER
 
 
     def _getFileAndDates(self, name, load_file, file_name) -> pd.DataFrame:
@@ -77,7 +83,7 @@ class YahooDataLoader():
         if load_file or (self.date_start is None):
             self._file_name_last = file_name
 
-            if os.path.exists(file_name):
+            if path.exists(file_name):
                 if self.verbose > 0: self.printfunc(f"{self.ticker}: Existing {name} data file found at {file_name}.")
                 df0 = pd.read_csv(file_name)
                 df0['date'] = pd.to_datetime(df0['date'])
@@ -199,7 +205,7 @@ class YahooDataLoader():
             return df
 
 
-    def queryEOD(self, save=True, file_name='') -> pd.DataFrame:
+    def queryEOD(self, save=True, file_name=None) -> pd.DataFrame:
         """
         Function to query Yahoo EOD data.
 
@@ -216,10 +222,10 @@ class YahooDataLoader():
         pandas.DataFrame
             If `save=True`, return the refreshed data, else return the queried data.
         """
-        if file_name == '':
-            file_name = os.path.join(self.default_folder, f'{self.ticker}_EOD.csv.gz')
-            if not os.path.exists(self.default_folder):
-                os.mkdir(self.default_folder)
+        if file_name is None:
+            file_name = path.join(self.default_folder, f'{self.ticker}_EOD.csv.gz')
+            if not path.exists(self.default_folder):
+                mkdir(self.default_folder)
         df_exist = self._getFileAndDates(name='EOD', load_file=save, file_name=file_name)
 
         s_head = 'https://query1.finance.yahoo.com/v7/finance/download/'
@@ -262,9 +268,9 @@ class YahooDataLoader():
             If `save=True`, return the refreshed data, else return the queried data.
         """
         if file_name == '':
-            file_name = os.path.join(self.default_folder, f'{self.ticker}_EOD.csv.gz')
-            if not os.path.exists(self.default_folder):
-                os.mkdir(self.default_folder)
+            file_name = path.join(self.default_folder, f'{self.ticker}_EOD.csv.gz')
+            if not path.exists(self.default_folder):
+                mkdir(self.default_folder)
         df_exist = self._getFileAndDates(name='dividend', load_file=save, file_name=file_name)
 
         s_head = 'https://query1.finance.yahoo.com/v7/finance/download/'
