@@ -1,8 +1,8 @@
 .DS_Store
 __pycache__
-__data__
-__log__
-__output__
+_data
+_log
+_output
 __temp*
 *.egg-info
 build

@@ -1,7 +1,7 @@
 """
 Utilities for logging.
-
 """
+
 import os
 import logging
 import pandas as pd
@@ -22,11 +22,11 @@ class DefaultLogger():
         Parameters
         ----------
         hdlr : logging.Handler
-            Handler of the log
-        formatter: logging.Formatter
-            Formatter of the handler
+            Handler of the log.
+        formatter : logging.Formatter
+            Formatter of the handler.
         **kwargs :
-            Additional arguments passed to `hdlr`.
+            Additional key-word arguments passed to `hdlr`.
         """
         self.logger = logging.getLogger()
         self.logger.setLevel(logging.INFO)
@@ -41,16 +41,25 @@ class DefaultLogger():
         hdlr.setFormatter(formatter)
         self.logger.addHandler(hdlr)
 
-    def log_pandas(self, msg, level=logging.INFO) -> None:
+    def logPandas(self, *args, level=logging.INFO) -> None:
         """
         Log with additional formatting for pandas Series and DataFrame.
         
         Parameters
         ----------
-        msg : str | pandas.Series | pandas.DataFrame
-            The message to be logged.
+        *args : str | pandas.Series | pandas.DataFrame
+            The messages to be logged.
         level : int
             Level of the log message. 10 = DEBUG; 20 = INFO; 30 = WARNING; 40 = ERROR; 50 = CRITICAL.
+        """
+        messages = args
+        messages = ['\n'+msg.to_string() if type(msg) in [pd.Series, pd.DataFrame] else msg for msg in messages]
+        msg = ' '.join(messages)
+        self.logger.log(level, msg)
+    
+    def log_pandas(self, msg, level=logging.INFO) -> None:
+        """
+        To be depreciated. Please use `logPandas()`.
         """
         if type(msg) in [pd.Series, pd.DataFrame]: msg = '\n' + msg.to_string()
         self.logger.log(level, msg)
@@ -60,7 +69,7 @@ class FileLogger(DefaultLogger):
     """
     Class of a logger which writes to a log file and print on screen.
     """
-    def __init__(self, formatter=simple_formatter, log_file=None, default_folder='__log__', append=False) -> None:
+    def __init__(self, formatter=simple_formatter, log_file=None, default_folder='_log', append=False) -> None:
         """
         Initialize the file-screen logger.
 
@@ -70,7 +79,7 @@ class FileLogger(DefaultLogger):
             Path to the log file. If None, a log file will be created under the `default_folder`.
         default_folder: str
             Default folder for the log files.
-        append : bool, default to False
+        append : bool
             If True, append to the existing log file. If False, start from an empty log file.
         """
         if log_file is None:

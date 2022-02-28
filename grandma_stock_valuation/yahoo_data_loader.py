@@ -9,7 +9,7 @@ from os import mkdir
 from os import path
 
 
-DEFAULT_DATA_FOLDER = '__data__'
+DEFAULT_DATA_FOLDER = '_data'
 
 
 def _printLevel(msg, level=logging.INFO):

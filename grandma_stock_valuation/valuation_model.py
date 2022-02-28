@@ -9,19 +9,18 @@ import pandas as pd
 import logging
 from sklearn.linear_model import LinearRegression
 import plotly.graph_objects as go
-from os import mkdir
-from os import path
+from os import mkdir, path
 from datetime import date
 
 
-DEFAULT_OUTPUT_FOLDER = '__output__'
+DEFAULT_OUTPUT_FOLDER = '_output'
 
 
-def _printLevel(msg, level=logging.INFO):
+def _printLevel(*args, level=logging.INFO):
     """
     A wrapper over `print` to support `level` argument.
     """
-    print(msg)
+    print(*args)
 
 
 class GrandmaStockValuation():
@@ -36,11 +35,12 @@ class GrandmaStockValuation():
         Parameters
         ----------
         recent_months : int
-            Number of recent months to exclude from model fitting.
+            Number of recent months, before `date_end`, to exclude from model fitting.
         train_years : int
-            Number of years for model fitting
+            Years of historical data, before excluding `recent_months`, for model fitting.
         date_end : str ("yyyy-mm-dd") | date | None
-            The "current" date. If None, use the latest date in the input data.
+            The "current" date. Data after this date will not be used.
+            If None, use the latest date in the input data.
         verbose : int
             2 to print detailed information; 1 to print high-level information; 0 to suppress print.
         printfunc : func
@@ -84,24 +84,26 @@ class GrandmaStockValuation():
             Recent data set.
         """
         df0 = input_data.copy()
+        df0['date'] = pd.to_datetime(df0['date'])
         df0 = df0[df0[price_col]>0].sort_values('date').reset_index(drop=True)
 
         if self.date_end is None:
             date_recent_end = df0['date'].max()
         else:
-            date_recent_end = min(pd.to_datetime(self.date_end), date_max = df0['date'].max())
-        date_recent_start = date_recent_end - pd.DateOffset(months=self.recent_months) + pd.DateOffset(days=1)
-        date_train_end = date_recent_start - pd.DateOffset(days=1)
-        date_train_start = date_train_end - pd.DateOffset(years=self.train_years) + pd.DateOffset(days=1)
+            date_recent_end = min(pd.to_datetime(self.date_end), df0['date'].max())
+        date_recent_end = date_recent_end.floor('D') + pd.DateOffset(days=1)
+        date_recent_start = date_recent_end - pd.DateOffset(months=self.recent_months)
+        date_train_end = date_recent_start
+        date_train_start = date_train_end - pd.DateOffset(years=self.train_years)
         date_train_start = max(date_train_start, df0['date'].min())
 
         cols_select = ['date', price_col]
         cols_map = {price_col:'price'}
 
-        df_train0 = df0[(df0['date']>=date_train_start) & (df0['date']<=date_train_end)][cols_select].reset_index(drop=True).rename(columns=cols_map)
+        df_train0 = df0[(df0['date']>=date_train_start) & (df0['date']<date_train_end)][cols_select].reset_index(drop=True).rename(columns=cols_map)
         if self.verbose > 0: self.printfunc(f"Train data contains {len(df_train0)} rows over {df_train0['date'].nunique()} dates from {df_train0['date'].min().date()} to {df_train0['date'].max().date()}.")
 
-        df_recent0 = df0[(df0['date']>=date_recent_start) & (df0['date']<=date_recent_end)][cols_select].reset_index(drop=True).rename(columns=cols_map)
+        df_recent0 = df0[(df0['date']>=date_recent_start) & (df0['date']<date_recent_end)][cols_select].reset_index(drop=True).rename(columns=cols_map)
         if len(df_recent0) > 0:
             if self.verbose > 0: self.printfunc(f"Recent data contains {len(df_recent0)} rows over {df_recent0['date'].nunique()} dates from {df_recent0['date'].min().date()} to {df_recent0['date'].max().date()}.")
         else:
@@ -118,9 +120,11 @@ class GrandmaStockValuation():
         Parameters
         ----------
         input_data : pandas.DataFrame
-            Input data. It needs to contain a `date` column and a price column.
+            Daily price data of the insturment.
+            It should contain a `date` column and a price column named by `price_col`.
         price_col : str
-            The column name in `input_data` to indicate price. Suggest to use the price adjusted (for splits and distributions).
+            The column name in `input_data` to indicate daily price.
+            Suggest to use the adjusted price.
         log : bool
             If True, fit log-linear regression. If False, fit linear regression.
         n_std : float
@@ -305,7 +309,7 @@ def batchValuation(
     verbose=0,
     printfunc=_printLevel,
     **kwargs
-    ):
+) -> Tuple[pd.DataFrame, dict]:
     """
     Carry out valuation of a group of instruments, by fitting a model on each instrument.
 
@@ -386,7 +390,7 @@ def _createDefaultOutputFolder():
         mkdir(image_folder)
 
 
-def addCashPortfolio(df_valuation_metrics, id_col='ticker', cash_name='cash', value_col='over_value_years', cash_value=0.0):
+def addCashPortfolio(df_valuation_metrics, id_col='ticker', cash_name='cash', value_col='over_value_years', cash_value=0.0) -> pd.DataFrame:
     """
     Add cash into the valuation metrics of an existing portfolio.
 
