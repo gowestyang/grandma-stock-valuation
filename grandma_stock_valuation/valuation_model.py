@@ -57,7 +57,7 @@ class GrandmaStockValuation():
         self._r2_train = np.nan,
         self._train_years = np.nan,
         self._annualized_return = np.nan,
-        self._currenct_price = np.nan,
+        self._current_price = np.nan,
         self._fair_price = np.nan,
         self._over_value_range = np.nan,
         self._over_value_years = np.nan
@@ -202,8 +202,8 @@ class GrandmaStockValuation():
         dict
             Valuation metrics:
                 `R2_train`: R2 of the fitted model on train data, with outliers removed.
-                `train_years`: number of years in train data.
-                `annualized_return`: average annualized return of the estimated trend.
+                `train_years`: number of years actually used to fit the model.
+                `annualized_return`: average annualized return derived from the fitted trend.
                 `current_price`: most recent price in the data.
                 `fair_price`: most recent estimated price in the data, based on the fitted trend.
                 `over_value_range`: `(current_price / fair_price) - 1`
@@ -226,9 +226,9 @@ class GrandmaStockValuation():
         self._annualized_return = (trend_train_end / trend_train_start)**(1/self._train_years) - 1
 
         df_combine = pd.concat([df_train, df_recent]).reset_index(drop=True)
-        self._currenct_price = df_combine['price'].iloc[-1]
+        self._current_price = df_combine['price'].iloc[-1]
         self._fair_price = df_combine['trend'].iloc[-1]
-        self._over_value_range = self._currenct_price / self._fair_price - 1
+        self._over_value_range = self._current_price / self._fair_price - 1
 
         if self._annualized_return >= min_annual_return:
             if self._over_value_range >= 0:
@@ -242,7 +242,7 @@ class GrandmaStockValuation():
             'r2_train':self._r2_train,
             'train_years':self._train_years,
             'annualized_return':self._annualized_return,
-            'currenct_price':self._currenct_price,
+            'current_price':self._current_price,
             'fair_price':self._fair_price,
             'over_value_range':self._over_value_range,
             'over_value_years':self._over_value_years
@@ -250,7 +250,7 @@ class GrandmaStockValuation():
 
         if self.verbose > 1:
             self.printfunc(f"R2 train = {self._r2_train:.3}, train years = {self._train_years:.3}, annualize return = {self._annualized_return:.3}.")
-            self.printfunc(f"currenct price = {self._currenct_price:.3}, fair price = {self._fair_price:.3}, over-value range = {self._over_value_range:.3}, over-value years = {self._over_value_years:.3}.")
+            self.printfunc(f"current price = {self._current_price:.3}, fair price = {self._fair_price:.3}, over-value range = {self._over_value_range:.3}, over-value years = {self._over_value_years:.3}.")
 
         return d_metric
 
@@ -325,13 +325,13 @@ def batchValuation(
     valuate_parameters : dict
         Parameters passed to `GrandmaStockValuation.evaluateValuation()`.
     save_result : bool
-        If True, save the valuation metrics into a csv.
+        If True, save the valuation metrics and figures to files.
     metric_file : str
         File to store the valuation metrics.
-        If `None`, save to the default location "__output__/valuation_metrics_<today>.csv".
+        If `None`, save to the default location "_output/valuation_metrics_<today>.csv".
     figure_folder : str
         Folder to store the price charts of each instruments.
-        If `None`, save to the default folder "__output__/images/"
+        If `None`, save to the default folder "_output/images/"
     verbose : int
         2 to print detailed information; 1 to print high-level information; 0 to suppress print.
     printfunc : func

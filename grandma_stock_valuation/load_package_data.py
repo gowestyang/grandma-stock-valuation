@@ -24,7 +24,7 @@ def loadPacakgeData(verbose=0) -> Tuple[dict, dict]:
             Description of the instruments.
             Keys are the tickers, and values are the description.
     """
-    PATH_DATA = path.join('..', 'data')
+    PATH_DATA = path.join(path.dirname(path.realpath(__file__)), 'data')
 
     files = listdir(PATH_DATA)
 
@@ -34,7 +34,7 @@ def loadPacakgeData(verbose=0) -> Tuple[dict, dict]:
         data = pd.read_csv(path.join(PATH_DATA, f))
         data['date'] = pd.to_datetime(data['date'])
         data = data[data['close_adj']>0].reset_index(drop=True)
-        d_instrument_data['ticker'] = data
+        d_instrument_data[ticker] = data
         if verbose>0: print(f"{ticker} data contains {len(data)} rows, {data['date'].nunique()} dates from {data['date'].min().date()} to {data['date'].max().date()}.")
 
     d_instrument = {
