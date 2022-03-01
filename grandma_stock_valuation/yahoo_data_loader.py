@@ -215,7 +215,7 @@ class YahooDataLoader():
             If True, save the queried data to a csv specified by `file_name`.
             If the csv file already exists, amend the existing file with the queried data.
         file_name: str
-            The csv file to save the queried data. Default to '__data__/<ticker>_EOD.csv.gz'.
+            The csv file to save the queried data. Default to '_data/<ticker>_EOD.csv.gz'.
             
         Returns
         -------
@@ -253,6 +253,8 @@ class YahooDataLoader():
     def queryDividend(self, save=False, file_name=''):
         """
         Function to query Yahoo dividend data.
+
+        To be depreciated.
 
         Parameters
         ----------

@@ -53,7 +53,7 @@ class DefaultLogger():
             Level of the log message. 10 = DEBUG; 20 = INFO; 30 = WARNING; 40 = ERROR; 50 = CRITICAL.
         """
         messages = args
-        messages = ['\n'+msg.to_string() if type(msg) in [pd.Series, pd.DataFrame] else msg for msg in messages]
+        messages = ['\n'+msg.to_string()+'\n' if type(msg) in [pd.Series, pd.DataFrame] else msg for msg in messages]
         msg = ' '.join(messages)
         self.logger.log(level, msg)
     
@@ -75,6 +75,8 @@ class FileLogger(DefaultLogger):
 
         Parameters
         ----------
+        formmater : logging.Formmater
+            Formatter to apply.
         log_file : str
             Path to the log file. If None, a log file will be created under the `default_folder`.
         default_folder: str
