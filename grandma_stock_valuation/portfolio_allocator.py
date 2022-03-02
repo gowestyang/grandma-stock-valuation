@@ -125,7 +125,7 @@ def allocatePortfolio(valuations, transformation='exponential', scale=None, with
         Larger `scale` gives more weight to more under-valued instruments. Should be a positive value.
         If not provided, will compensate number of instruments `n` as `scale = 2 - 2/n`.
     with_cash : bool
-        If True and `scale=None`, will compensate number of instruments `n` as `scale = 2 - 2/(n-1)`.
+        If True and `scale=None`, will compensate number of instruments (including cash) `n` as `scale = 2 - 2/(n-1)`.
         Use this configuration when one of the instrument is cash.
     weights : single-dimensional array like object
         Weight pre-allocated to each instrument, whose order should be aligned with the values in `valuations`.
