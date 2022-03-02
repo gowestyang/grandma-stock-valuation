@@ -37,7 +37,7 @@ class GrandmaStockValuation():
         recent_months : int
             Number of recent months, before `date_end`, to exclude from model fitting.
         train_years : int
-            Years of historical data, before excluding `recent_months`, for model fitting.
+            Years of historical data, after excluding `recent_months`, for model fitting.
         date_end : str ("yyyy-mm-dd") | date | None
             The "current" date. Data after this date will not be used.
             If None, use the latest date in the input data.
@@ -128,7 +128,7 @@ class GrandmaStockValuation():
         log : bool
             If True, fit log-linear regression. If False, fit linear regression.
         n_std : float
-            Outliers are identified by as examples with residuals outside `mean ± n_std * std`.
+            Outliers are identified by as examples with residual outside `mean ± n_std * std`.
             
         Returns
         -------
