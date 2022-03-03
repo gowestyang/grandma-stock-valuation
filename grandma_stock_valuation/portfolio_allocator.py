@@ -43,7 +43,7 @@ def getCorrelationWeight(
     recent_months : int
         Number of recent months, before `date_end`, to exclude from correlation computation.
     train_years : int
-        Years of historical data, before excluding `recent_months`, for correlation computation.
+        Years of historical data, after excluding `recent_months`, for correlation computation.
     date_end : str ("yyyy-mm-dd") | date | None
         The "current" date. Data after this date will not be used.
     with_cash : bool
