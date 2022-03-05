@@ -97,17 +97,11 @@ Here I use a portfolio with 4 ETFs + Cash as an example. Below is the result of 
 
 ### Back Test
 
-Many people ask me "What is the back-test performance?"
+The package will include the back-test functionality in the next version.
 
-Well, this is a tool for you to valuate stocks and build your own portfolio -- I'm not selling you to invest in a fund.
-
-The package will include the back-test functionality in the next version.<br>
-Still, please note that:
-* Back-test is for understanding how a strategy behaves under different scenaros.
-* Good back-test results cannot prove future performance.
-    * This tool gives you a lot of flexibility in configuration. You may find a set of stocks and model parameters which yields exceptional back-test result - but may not be that good in future.
-* In general, investment products are not designed to get exceptional returns, but to fulfill the need of a group of investors.
-    * If you hold medium to long investment horizon, if you want to have firm quantitative basis for your decisions - this tool is for you.
+Please note that
+* This package provides you much flexibility in configuration. You may find a set of stocks and model parameters which yields exceptional back-test result - but may not be so good in future.
+* Back-test is more for understanding how a strategy behaves under different scenarios.
 
 <br>
 
