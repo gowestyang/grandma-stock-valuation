@@ -1,39 +1,10 @@
 # Grandma Stock Valuation (GSV)
 *A simple, manageable valuation tool and portfolio builder for retail investors - even grandma can use it!*
 <br>
-* Valuate instrument with historical trends - no sophiscated technical analysis
+* Valuate instrument with historical trend - no sophiscated technical analysis
 * Build a flexible portfolio with your personal interest
-* Trade at your own pace - you can even trade only once per month/quarter
+* Invest at your own pace - you can even trade only once per month/quarter
 * Back your investment decision with firm numbers - no more frustration from all the media noise!
-
-<br>
-
-## Introduction
-"Grandma-style" traders look at only the historical daily prices - buy when the price is low - sell when the price is high.
-
-<br>
-
-The **Grandma Stock Valuation** model enhanced this simple idea with a number of qualitative considerations:
-* Type of curves to fit on historical daily prices
-* Outliers identification
-* Evaluate *fair price*, *over-valued %*, and *over-valued years*
-
-In addition, the project includes a **portfolio allocator**, which suggests the portfolio allocation of your selected group of instruments.<br>
-It allocates larger proportion to more under-valued instruments, with several configurations:
-* Sensitivity to over/under valuation
-* Compensation to the number of instruments
-* Option to include cash as part of the portfolio, in order to realize profit
-
-<br>
-
-**Important Notes**
-* The valuation model is most suitable for **broad ETF**, such as S&P 500 ETF.
-* The portfolio allocator only works with **instruments with sufficient positive return** (suggest > 1% historical annualized return).
-
-<br>
-
-## Examples
-Please visit the [project page](https://github.com/gowestyang/grandma-stock-valuation) for detailed information and examples.
 
 <br>
 
@@ -54,5 +25,14 @@ If you already have the dependencies installed, you can install grandma-stock-va
 
     pip install -U grandma-stock-valuation
 
+<br>
 
+## Documentation and Examples
 
+Please refer to https://github.com/gowestyang/grandma-stock-valuation/tree/main/doc for detailed documentations and examples:
+* Step-by-step guide to use the package, with python scripts and package data.
+    * Query data from Yahoo Finance
+    * Valuate stocks with Grandma Stock Valuation model, and visualize the result
+    * Construct a portfolio with Grandma Portfolio Allocation
+    * Back-test (WIP)
+* Detailed explaination to the parameters, math and design considerations.
