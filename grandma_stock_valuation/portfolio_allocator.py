@@ -149,10 +149,10 @@ def allocatePortfolio(valuations, transformation='exponential', scale=None, with
     ar_valuation = np.array(valuations).astype(float)
     if weights is not None:
         ar_weights = np.array(weights).astype(float)
+        assert len(valuations)==len(weights), "valuations and weights should be the same length and in the smae order."
     else:
         ar_weights = np.array([1/len(ar_valuation)]*len(ar_valuation))
-        assert len(valuations)==len(weights), "valuations and weights should be the same length and in the smae order."
-
+        
     if scale is None:
         n_instruments = len(ar_valuation) if not with_cash else len(ar_valuation)-1
         if n_instruments > 1:

@@ -1,5 +1,8 @@
 # Change Log
 
+*Version 0.2.1*
+* Fixed a bug where `allocatePortfolio()` failed assertion when `weights=None`.
+
 *Version 0.2.0*
 * Fixed a bug where `getCorrelationWeight()` resulted in exception when the input data is empty.
 * Fixed a bug where `allocatePortfolio()` failed when input valuation array contains nan.
