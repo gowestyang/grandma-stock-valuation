@@ -61,7 +61,16 @@ def getCorrelationWeight(
     dict[str : float]
         Weight allocated to each instrument (ticker).
     """
-    if len(d_instrument_prices) > 1:
+    if len(d_instrument_prices) == 0:
+        d_weight = {}
+        if with_cash:
+            d_weight[cash_name] = 1
+        return d_weight
+
+    if len(d_instrument_prices) == 1:
+        d_cor_agg = {t:1 for t in d_instrument_prices}
+
+    else:
 
         d_cleaned_prices = {}
         for ticker, df in d_instrument_prices.items():
@@ -96,9 +105,6 @@ def getCorrelationWeight(
             d_cor_detail[ticker2][ticker1] = cor
 
         d_cor_agg = {t:sum([1-v for v in d_cor.values()]) for t, d_cor in d_cor_detail.items()}
-    
-    else:
-        d_cor_agg = {t:1 for t in d_instrument_prices}
 
     total_cor = sum(d_cor_agg.values())
     non_cash_weight = len(d_cor_agg) / (len(d_cor_agg)+1) if with_cash else 1.0
@@ -137,11 +143,15 @@ def allocatePortfolio(valuations, transformation='exponential', scale=None, with
     """
     assert transformation in ['exponential', 'sigmoid'], "transformation must be 'exponential' or 'sigmoid'."
 
+    if len(valuations)==0:
+        return np.array([])
+
     ar_valuation = np.array(valuations).astype(float)
     if weights is not None:
         ar_weights = np.array(weights).astype(float)
     else:
         ar_weights = np.array([1/len(ar_valuation)]*len(ar_valuation))
+        assert len(valuations)==len(weights), "valuations and weights should be the same length and in the smae order."
 
     if scale is None:
         n_instruments = len(ar_valuation) if not with_cash else len(ar_valuation)-1
@@ -158,6 +168,6 @@ def allocatePortfolio(valuations, transformation='exponential', scale=None, with
     
     ar_transformed = ar_transformed * ar_weights
 
-    ar_portfolio = ar_transformed / ar_transformed.sum()
+    ar_portfolio = ar_transformed / np.nansum(ar_transformed)
 
     return ar_portfolio

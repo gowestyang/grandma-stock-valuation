@@ -303,6 +303,7 @@ def batchValuation(
     init_parameters={'recent_months':0, 'train_years':10, 'date_end':None},
     fit_parameters={'price_col':'close_adj', 'log':True, 'n_std':1.5},
     valuate_parameters={'min_annual_return':0.01},
+    draw_figure=True,
     save_result=True,
     metric_file = None,
     figure_folder = None,
@@ -324,6 +325,8 @@ def batchValuation(
         Parameters passed to `GrandmaStockValuation.fitTransform()`.
     valuate_parameters : dict
         Parameters passed to `GrandmaStockValuation.evaluateValuation()`.
+    draw_figure : bool
+        If True, generate price chart with trend.
     save_result : bool
         If True, save the valuation metrics and figures to files.
     metric_file : str
@@ -366,10 +369,11 @@ def batchValuation(
         df_metrics = pd.Series({'ticker':ticker, **d_metrics}).to_frame().T
         l_metrics.append(df_metrics)
 
-        fig = grandma.plotTrendline(title=ticker, **kwargs)
-        d_fig[ticker] = fig
-        if save_result:
-            fig.write_image(path.join(figure_folder, f'{ticker}.jpeg'))
+        if draw_figure:
+            fig = grandma.plotTrendline(title=ticker, **kwargs)
+            d_fig[ticker] = fig
+            if save_result:
+                fig.write_image(path.join(figure_folder, f'{ticker}.jpeg'))
     
     df_metrics = pd.concat(l_metrics, ignore_index=True)
     if save_result: df_metrics.to_csv(metric_file, index=False)
