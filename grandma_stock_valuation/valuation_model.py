@@ -28,7 +28,7 @@ class GrandmaStockValuation():
     Class of regression based Grandma Stock Valuation model.
     """
 
-    def __init__(self, recent_months=0, train_years=10, date_end=None, verbose=0, printfunc=_printLevel) -> None:
+    def __init__(self, recent_months=0, train_years=10, min_train_years=5, date_end=None, verbose=0, printfunc=_printLevel) -> None:
         """
         Initialize the Grandma Stock Valuation model.
 
@@ -37,7 +37,9 @@ class GrandmaStockValuation():
         recent_months : int
             Number of recent months, before `date_end`, to exclude from model fitting.
         train_years : int
-            Years of historical data, after excluding `recent_months`, for model fitting.
+            Maximum years of historical data, after excluding `recent_months`, for model fitting.
+        min_train_years : int
+            Minimum years of historical data required for model fitting.
         date_end : str ("yyyy-mm-dd") | date | None
             The "current" date. Data after this date will not be used.
             If None, use the latest date in the input data.
@@ -48,18 +50,21 @@ class GrandmaStockValuation():
         """
         self.recent_months = recent_months
         self.train_years = train_years
+        self.min_train_years = min_train_years
         self.date_end = date_end
         self.verbose = verbose
         self.printfunc = printfunc
 
-        self._df_train = None,
-        self._df_recent = None,
-        self._r2_train = np.nan,
-        self._train_years = np.nan,
-        self._annualized_return = np.nan,
-        self._current_price = np.nan,
-        self._fair_price = np.nan,
-        self._over_value_range = np.nan,
+        self._df_train = None
+        self._df_recent = None
+        self._fitted_model = None
+
+        self._r2_train = np.nan
+        self._train_years = np.nan
+        self._annualized_return = np.nan
+        self._current_price = np.nan
+        self._fair_price = np.nan
+        self._over_value_range = np.nan
         self._over_value_years = np.nan
 
 
@@ -83,10 +88,19 @@ class GrandmaStockValuation():
         pandas.DataFrame
             Recent data set.
         """
+        df_train0, df_recent0 = pd.DataFrame(columns=['date','price']), pd.DataFrame(columns=['date','price'])
+
+        if len(input_data) <= 1:
+            if self.verbose > 0: self.printfunc(f"Input data contains len{input_data} rows - not enough to train model.")
+            return df_train0, df_recent0
+
         df0 = input_data.copy()
         df0['date'] = pd.to_datetime(df0['date'])
         df0 = df0[df0[price_col]>0].sort_values('date').reset_index(drop=True)
-
+        if len(df0) <= 1:
+            if self.verbose > 0: self.printfunc(f"Input data contains {len(df0)} valid price - not enough to train model.")
+            return df_train0, df_recent0
+        
         if self.date_end is None:
             date_recent_end = df0['date'].max()
         else:
@@ -94,8 +108,15 @@ class GrandmaStockValuation():
         date_recent_end = date_recent_end.floor('D') + pd.DateOffset(days=1)
         date_recent_start = date_recent_end - pd.DateOffset(months=self.recent_months)
         date_train_end = date_recent_start
+
+        date_train_start_needed = date_train_end - pd.DateOffset(years=self.min_train_years)
+        date_first = df0['date'].min()
+        if date_first >= date_train_start_needed:
+            if self.verbose > 0: self.printfunc(f"Not enough training data to fit the model.")
+            return df_train0, df_recent0
+
         date_train_start = date_train_end - pd.DateOffset(years=self.train_years)
-        date_train_start = max(date_train_start, df0['date'].min())
+        date_train_start = max(date_train_start, date_first)
 
         cols_select = ['date', price_col]
         cols_map = {price_col:'price'}
@@ -107,7 +128,6 @@ class GrandmaStockValuation():
         if len(df_recent0) > 0:
             if self.verbose > 0: self.printfunc(f"Recent data contains {len(df_recent0)} rows over {df_recent0['date'].nunique()} dates from {df_recent0['date'].min().date()} to {df_recent0['date'].max().date()}.")
         else:
-            df_recent0 = pd.DataFrame()
             if self.verbose > 0: self.printfunc(f"No recent data specified.")
         
         return df_train0, df_recent0
@@ -132,54 +152,57 @@ class GrandmaStockValuation():
             
         Returns
         -------
-        pandas.DataFrame
-            The fitted model
+        GrandmaStockValuation
+            The fitted model.
         """
         df_train, df_recent = self._splitTrainRecent(input_data, price_col)
 
-        if self.verbose > 0: self.printfunc("Fit regression...")
-        df_train['x'] = range(len(df_train))
-        x_train_max = df_train['x'].max()
-        x_train = np.array(df_train['x']).reshape(-1, 1)
+        if len(df_train) > 1:
+            if self.verbose > 0: self.printfunc("Fit regression...")
+            df_train['x'] = range(len(df_train))
+            x_train_max = df_train['x'].max()
+            x_train = np.array(df_train['x']).reshape(-1, 1)
 
-        y_train = np.log(df_train['price']) if log else df_train['price']
+            y_train = np.log(df_train['price']) if log else df_train['price']
 
-        lm = LinearRegression().fit(x_train, y_train)
+            lm = LinearRegression().fit(x_train, y_train)
 
-        y_pred = lm.predict(x_train)
-        df_train['trend'] = np.exp(y_pred) if log else y_pred
-        df_train['residual'] = y_pred - y_train
+            y_pred = lm.predict(x_train)
+            df_train['trend'] = np.exp(y_pred) if log else y_pred
+            df_train['residual'] = y_pred - y_train
 
-        residual_std = df_train['residual'].std()
-        residual_mean = df_train['residual'].mean()
-        upper_bond = residual_mean + n_std * residual_std
-        lower_bond = residual_mean - n_std * residual_std 
+            residual_std = df_train['residual'].std()
+            residual_mean = df_train['residual'].mean()
+            upper_bond = residual_mean + n_std * residual_std
+            lower_bond = residual_mean - n_std * residual_std 
 
-        df_train['is_outlier'] = (df_train['residual'] > upper_bond) | (df_train['residual'] < lower_bond)
-        if self.verbose > 1: self.printfunc(f"{df_train['is_outlier'].sum()} out of {len(df_train)} dates are outliers.")
+            df_train['is_outlier'] = (df_train['residual'] > upper_bond) | (df_train['residual'] < lower_bond)
+            if self.verbose > 1: self.printfunc(f"{df_train['is_outlier'].sum()} out of {len(df_train)} dates are outliers.")
 
-        if self.verbose > 1: self.printfunc("Re-fit wihtout outliers...")
-        index_select = ~df_train['is_outlier']
-        x_train_filter = np.array(df_train[index_select]['x']).reshape(-1, 1)
-        y_train_filter = np.log(df_train[index_select]['price']) if log else df_train[index_select]['price']
-        lm = LinearRegression().fit(x_train_filter, y_train_filter)
-        y_pred = lm.predict(x_train)
-        df_train['trend'] = np.exp(y_pred) if log else y_pred
+            if self.verbose > 1: self.printfunc("Re-fit wihtout outliers...")
+            index_select = ~df_train['is_outlier']
+            x_train_filter = np.array(df_train[index_select]['x']).reshape(-1, 1)
+            y_train_filter = np.log(df_train[index_select]['price']) if log else df_train[index_select]['price']
+            lm = LinearRegression().fit(x_train_filter, y_train_filter)
+            y_pred = lm.predict(x_train)
+            df_train['trend'] = np.exp(y_pred) if log else y_pred
 
-        df_train['is_recent'] = False
-        df_train.drop(columns=['residual'], inplace=True)
+            df_train['is_recent'] = False
+            df_train.drop(columns=['residual'], inplace=True)
 
-        if len(df_recent) > 0:
-            if self.verbose > 1: self.printfunc("Extend trend to recent data.")
-            df_recent['x'] = np.arange(0, len(df_recent)) + x_train_max + 1
-            x_recent = np.array(df_recent['x']).reshape(-1, 1)
-            y_recent = lm.predict(x_recent)
-            df_recent['trend'] = np.exp(y_recent) if log else y_recent
-            df_recent['is_outlier'] = False
-            df_recent['is_recent'] = True
-        else:
-            if self.verbose > 1: self.printfunc("No recent data to estimate.")
-        
+            if len(df_recent) > 0:
+                if self.verbose > 1: self.printfunc("Extend trend to recent data.")
+                df_recent['x'] = np.arange(0, len(df_recent)) + x_train_max + 1
+                x_recent = np.array(df_recent['x']).reshape(-1, 1)
+                y_recent = lm.predict(x_recent)
+                df_recent['trend'] = np.exp(y_recent) if log else y_recent
+                df_recent['is_outlier'] = False
+                df_recent['is_recent'] = True
+            else:
+                if self.verbose > 1: self.printfunc("No recent data to estimate.")
+            
+            self._fitted_model = lm
+            
         self._df_train, self._df_recent = df_train, df_recent
         if self.verbose > 0: self.printfunc("done!")
 
@@ -215,27 +238,51 @@ class GrandmaStockValuation():
         """
         df_train, df_recent = self._df_train.copy(), self._df_recent.copy()
 
-        df_train_filter = df_train[~df_train['is_outlier']][['price','trend']]
-        self._r2_train = 1 - ((df_train_filter['price'] - df_train_filter['trend'])**2).sum() / ((df_train_filter['price'] - df_train_filter['price'].mean())**2).sum()
+        if len(df_train) > 0:
+            df_train_filter = df_train[~df_train['is_outlier']][['price','trend']]
+            self._r2_train = 1 - ((df_train_filter['price'] - df_train_filter['trend'])**2).sum() / ((df_train_filter['price'] - df_train_filter['price'].mean())**2).sum()
 
-        date_train_start = df_train['date'].min()
-        date_train_end = df_train['date'].max()
-        self._train_years = (date_train_end - date_train_start).days / 365
-        trend_train_start = df_train['trend'].iloc[0]
-        trend_train_end = df_train['trend'].iloc[-1]
-        self._annualized_return = (trend_train_end / trend_train_start)**(1/self._train_years) - 1
+            date_train_start = df_train['date'].min()
+            date_train_end = df_train['date'].max()
+            self._train_years = (date_train_end - date_train_start).days / 365
+            trend_train_start = df_train['trend'].iloc[0]
+            trend_train_end = df_train['trend'].iloc[-1]
+            self._annualized_return = (trend_train_end / trend_train_start)**(1/self._train_years) - 1
 
-        df_combine = pd.concat([df_train, df_recent]).reset_index(drop=True)
-        self._current_price = df_combine['price'].iloc[-1]
-        self._fair_price = df_combine['trend'].iloc[-1]
-        self._over_value_range = self._current_price / self._fair_price - 1
+            df_combine = pd.concat([df_train, df_recent]).reset_index(drop=True)
+            self._current_price = df_combine['price'].iloc[-1]
+            self._fair_price = df_combine['trend'].iloc[-1]
+            self._over_value_range = self._current_price / self._fair_price - 1
 
-        if self._annualized_return >= min_annual_return:
-            if self._over_value_range >= 0:
-                self._over_value_years = self._over_value_range / self._annualized_return
+            if self._annualized_return >= min_annual_return:
+                if self._over_value_range >= 0:
+                    self._over_value_years = self._over_value_range / self._annualized_return
+                else:
+                    self._over_value_years = self._over_value_range * self._annualized_return * 100
             else:
-                self._over_value_years = self._over_value_range * self._annualized_return * 100
+                self._over_value_years = np.nan
+
+            d_metric = {
+                'r2_train':self._r2_train,
+                'train_years':self._train_years,
+                'annualized_return':self._annualized_return,
+                'current_price':self._current_price,
+                'fair_price':self._fair_price,
+                'over_value_range':self._over_value_range,
+                'over_value_years':self._over_value_years
+                }
+
+            if self.verbose > 1:
+                self.printfunc(f"R2 train = {self._r2_train:.3}, train years = {self._train_years:.3}, annualize return = {self._annualized_return:.3}.")
+                self.printfunc(f"current price = {self._current_price:.3}, fair price = {self._fair_price:.3}, over-value range = {self._over_value_range:.3}, over-value years = {self._over_value_years:.3}.")
+
         else:
+            self._r2_train = np.nan
+            self._train_years = np.nan
+            self._annualized_return = np.nan
+            self._current_price = np.nan
+            self._fair_price = np.nan
+            self._over_value_range = np.nan
             self._over_value_years = np.nan
 
         d_metric = {
@@ -247,10 +294,6 @@ class GrandmaStockValuation():
             'over_value_range':self._over_value_range,
             'over_value_years':self._over_value_years
             }
-
-        if self.verbose > 1:
-            self.printfunc(f"R2 train = {self._r2_train:.3}, train years = {self._train_years:.3}, annualize return = {self._annualized_return:.3}.")
-            self.printfunc(f"current price = {self._current_price:.3}, fair price = {self._fair_price:.3}, over-value range = {self._over_value_range:.3}, over-value years = {self._over_value_years:.3}.")
 
         return d_metric
 
@@ -276,31 +319,33 @@ class GrandmaStockValuation():
         df_train, df_recent = self._df_train.copy(), self._df_recent.copy()
         fig = go.Figure()
 
-        fig.add_trace(go.Scatter(x=df_train['date'], y=df_train['price'], name='Historic Price',
-                                line=dict(color='palegreen', width=1)))
+        if df_train > 0:
 
-        df_outlier = df_train[['date','price']].copy()
-        index_outlier = df_train['is_outlier']
-        df_outlier.loc[~index_outlier, 'price'] = None
-        fig.add_trace(go.Scatter(x=df_outlier['date'], y=df_outlier['price'], name='Outlier',
-                                line=dict(color='red', width=1)))
+            fig.add_trace(go.Scatter(x=df_train['date'], y=df_train['price'], name='Historic Price',
+                                    line=dict(color='palegreen', width=1)))
 
-        if len(df_recent) > 0:
-            fig.add_trace(go.Scatter(x=df_recent['date'], y=df_recent['price'], name='Recent Price',
-                                    line=dict(color='cyan', width=1)))
+            df_outlier = df_train[['date','price']].copy()
+            index_outlier = df_train['is_outlier']
+            df_outlier.loc[~index_outlier, 'price'] = None
+            fig.add_trace(go.Scatter(x=df_outlier['date'], y=df_outlier['price'], name='Outlier',
+                                    line=dict(color='red', width=1)))
 
-        df_trend = pd.concat([df_train, df_recent])[['date','trend']].reset_index(drop=True)
-        fig.add_trace(go.Scatter(x=df_trend['date'], y=df_trend['trend'], name='Trend',
-                                line=dict(color='lightsalmon', width=1)))
+            if len(df_recent) > 0:
+                fig.add_trace(go.Scatter(x=df_recent['date'], y=df_recent['price'], name='Recent Price',
+                                        line=dict(color='cyan', width=1)))
 
-        fig.update_layout(template='plotly_dark', title=title, xaxis_title='date', yaxis_title='price', **kwargs)
+            df_trend = pd.concat([df_train, df_recent])[['date','trend']].reset_index(drop=True)
+            fig.add_trace(go.Scatter(x=df_trend['date'], y=df_trend['trend'], name='Trend',
+                                    line=dict(color='lightsalmon', width=1)))
+
+            fig.update_layout(template='plotly_dark', title=title, xaxis_title='date', yaxis_title='price', **kwargs)
         
         return fig
 
 
 def batchValuation(
     d_instrument_data,
-    init_parameters={'recent_months':0, 'train_years':10, 'date_end':None},
+    init_parameters={'recent_months':0, 'train_years':10, 'min_train_years':5, 'date_end':None},
     fit_parameters={'price_col':'close_adj', 'log':True, 'n_std':1.5},
     valuate_parameters={'min_annual_return':0.01},
     draw_figure=True,
@@ -422,4 +467,3 @@ def addCashPortfolio(df_valuation_metrics, id_col='ticker', cash_name='cash', va
     df_portfolio[value_col] = df_portfolio[value_col].astype(float)
 
     return df_portfolio
-
