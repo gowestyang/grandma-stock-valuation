@@ -1,9 +1,15 @@
 # Change Log
 
+*Version 0.2.0*
+* Fixed a bug where `getCorrelationWeight()` resulted in exception when the input data is empty.
+* Fixed a bug where `allocatePortfolio()` failed when input valuation array contains nan.
+* Fixed a bug where `allocatePortfolio()` failed when input valuation array is empty.
+* Added an option in `batchValuation()` to not generate price charts.
+
 *Version 0.1.0*
-* Bug fixing
-* Add package data
-* Add correlation weight to portfolio allocation
+* Fixed a bug where `date_end` had no effect in `GrandmaStockValuation`.
+* Added `loadPacakgeData()` function to load package data.
+* Added `getCorrelationWeight()` function to calculate correlation weight.
 
 <br>
 
