@@ -1,5 +1,8 @@
 # Change Log
 
+*Version 0.2.2*
+* Fixed a bug where `plotTrendline()` resulted in failed comparison.
+
 *Version 0.2.1*
 * Fixed a bug where `allocatePortfolio()` failed assertion when `weights=None`.
 

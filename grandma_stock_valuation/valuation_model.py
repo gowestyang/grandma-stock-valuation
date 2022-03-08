@@ -238,7 +238,7 @@ class GrandmaStockValuation():
         """
         df_train, df_recent = self._df_train.copy(), self._df_recent.copy()
 
-        if len(df_train) > 0:
+        if len(df_train) > 1:
             df_train_filter = df_train[~df_train['is_outlier']][['price','trend']]
             self._r2_train = 1 - ((df_train_filter['price'] - df_train_filter['trend'])**2).sum() / ((df_train_filter['price'] - df_train_filter['price'].mean())**2).sum()
 
@@ -319,7 +319,7 @@ class GrandmaStockValuation():
         df_train, df_recent = self._df_train.copy(), self._df_recent.copy()
         fig = go.Figure()
 
-        if df_train > 0:
+        if len(df_train) > 1:
 
             fig.add_trace(go.Scatter(x=df_train['date'], y=df_train['price'], name='Historic Price',
                                     line=dict(color='palegreen', width=1)))
