@@ -91,14 +91,14 @@ class GrandmaStockValuation():
         df_train0, df_recent0 = pd.DataFrame(columns=['date','price']), pd.DataFrame(columns=['date','price'])
 
         if len(input_data) <= 1:
-            if self.verbose > 0: self.printfunc(f"Input data contains len{input_data} rows - not enough to train model.")
+            if self.verbose > 1: self.printfunc(f"Input data contains len{input_data} rows - not enough to train model.")
             return df_train0, df_recent0
 
         df0 = input_data.copy()
         df0['date'] = pd.to_datetime(df0['date'])
         df0 = df0[df0[price_col]>0].sort_values('date').reset_index(drop=True)
         if len(df0) <= 1:
-            if self.verbose > 0: self.printfunc(f"Input data contains {len(df0)} valid price - not enough to train model.")
+            if self.verbose > 1: self.printfunc(f"Input data contains {len(df0)} valid price - not enough to train model.")
             return df_train0, df_recent0
         
         if self.date_end is None:
@@ -112,7 +112,7 @@ class GrandmaStockValuation():
         date_train_start_needed = date_train_end - pd.DateOffset(years=self.min_train_years)
         date_first = df0['date'].min()
         if date_first >= date_train_start_needed:
-            if self.verbose > 0: self.printfunc(f"Not enough training data to fit the model.")
+            if self.verbose > 1: self.printfunc(f"Not enough training data to fit the model.")
             return df_train0, df_recent0
 
         date_train_start = date_train_end - pd.DateOffset(years=self.train_years)
@@ -122,13 +122,13 @@ class GrandmaStockValuation():
         cols_map = {price_col:'price'}
 
         df_train0 = df0[(df0['date']>=date_train_start) & (df0['date']<date_train_end)][cols_select].reset_index(drop=True).rename(columns=cols_map)
-        if self.verbose > 0: self.printfunc(f"Train data contains {len(df_train0)} rows over {df_train0['date'].nunique()} dates from {df_train0['date'].min().date()} to {df_train0['date'].max().date()}.")
+        if self.verbose > 1: self.printfunc(f"Train data contains {len(df_train0)} rows over {df_train0['date'].nunique()} dates from {df_train0['date'].min().date()} to {df_train0['date'].max().date()}.")
 
         df_recent0 = df0[(df0['date']>=date_recent_start) & (df0['date']<date_recent_end)][cols_select].reset_index(drop=True).rename(columns=cols_map)
         if len(df_recent0) > 0:
-            if self.verbose > 0: self.printfunc(f"Recent data contains {len(df_recent0)} rows over {df_recent0['date'].nunique()} dates from {df_recent0['date'].min().date()} to {df_recent0['date'].max().date()}.")
+            if self.verbose > 1: self.printfunc(f"Recent data contains {len(df_recent0)} rows over {df_recent0['date'].nunique()} dates from {df_recent0['date'].min().date()} to {df_recent0['date'].max().date()}.")
         else:
-            if self.verbose > 0: self.printfunc(f"No recent data specified.")
+            if self.verbose > 1: self.printfunc(f"No recent data specified.")
         
         return df_train0, df_recent0
 
@@ -158,7 +158,7 @@ class GrandmaStockValuation():
         df_train, df_recent = self._splitTrainRecent(input_data, price_col)
 
         if len(df_train) > 1:
-            if self.verbose > 0: self.printfunc("Fit regression...")
+            if self.verbose > 1: self.printfunc("Fit regression...")
             df_train['x'] = range(len(df_train))
             x_train_max = df_train['x'].max()
             x_train = np.array(df_train['x']).reshape(-1, 1)
@@ -204,7 +204,7 @@ class GrandmaStockValuation():
             self._fitted_model = lm
             
         self._df_train, self._df_recent = df_train, df_recent
-        if self.verbose > 0: self.printfunc("done!")
+        if self.verbose > 1: self.printfunc("Complete model fitting!")
 
         return self
 
