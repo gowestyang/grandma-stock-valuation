@@ -29,7 +29,7 @@ class GrandmaBackTester():
                  init_parameters={'recent_months':0, 'train_years':10, 'min_train_years':5, 'date_end':None},
                  fit_parameters={'price_col':'close_adj', 'log':True, 'n_std':1.5},
                  valuate_parameters={'min_annual_return':0.01},
-                 allocation_parameters={'transformation':'exponential', 'scale':1},
+                 allocation_parameters={'transformation':'sigmoid', 'scale':1},
                  with_cash=True, with_correlation_weights=True,
                  verbose=0,
                  printfunc=_printLevel):
@@ -69,9 +69,9 @@ class GrandmaBackTester():
         self._index_start = None
         self._df_instrument_prices = None
 
-        self.d_total_value = None
-        self.d_adjustments = None
-        self.d_portfolio = Nones
+        self.df_total_value = None
+        self.df_adjustments = None
+        self.df_portfolio = None
         self.df_average_value = None
 
     def _cleanInputData(self, d_instrument_data):
@@ -239,8 +239,8 @@ class GrandmaBackTester():
         self._cleanInputData(d_instrument_data)
 
         d_total_value = {}
-        d_adjustments = {}
-        d_portfolio = {}
+        l_adjustments = []
+        l_portfolio = []
 
         # initialize
         total_value_start = 1
@@ -248,13 +248,15 @@ class GrandmaBackTester():
 
         d_instrument_data_i = self._getHistoricalData(self._df_instrument_prices, self._index_start, self._price_col)
         df_metrics_i = self._getAllocation(d_instrument_data_i, total_value=total_value_start)
+        df_metrics_i['date'] = dt
 
         cols_select = ['ticker','current_price','current_value','portfolio_allocation']
-        df_portfolio_i = df_metrics_i[cols_select].copy().rename(columns={'portfolio_allocation':'current_portfolio_pct'})
+        df_portfolio_i = df_metrics_i[cols_select].rename(columns={'portfolio_allocation':'current_portfolio_pct'})
+        df_portfolio_i['date'] = dt
 
         d_total_value[dt] = total_value_start
-        d_adjustments[dt] = df_metrics_i
-        d_portfolio[dt] = df_portfolio_i
+        l_adjustments.append(df_metrics_i)
+        l_portfolio.append(df_portfolio_i)
 
         next_adjust_date = self._backtest_start_date + pd.DateOffset(months=self.adjust_freq_months)
 
@@ -271,18 +273,29 @@ class GrandmaBackTester():
                 df_metrics_i = self._getAllocation(d_instrument_data_i, total_value=total_value)
                 df_portfolio_i = df_metrics_i[cols_select].copy().rename(columns={'portfolio_allocation':'current_portfolio_pct'})
 
-                d_adjustments[dt] = df_metrics_i
+                df_metrics_i['date'] = dt
+                l_adjustments.append(df_metrics_i)
                 if self.verbose > 0: self.printfunc(f"Adjust portfolio on {dt.date()}, total value = {total_value:.6f}")
             
             d_total_value[dt] = total_value
-            d_portfolio[dt] = df_portfolio_i
+            df_portfolio_i['date'] = dt
+            l_portfolio.append(df_portfolio_i)
 
         if self.verbose > 0: self.printfunc(f"final portfolio increased by {total_value/total_value_start-1:.3f} over {self.backtest_years} years, which is {(total_value/total_value_start)**(1/self.backtest_years)-1:.4f} annualized growth.")
 
-        self.d_total_value = d_total_value
-        self.d_adjustments = d_adjustments
-        self.d_portfolio = d_portfolio
+        self.df_total_value = pd.DataFrame({'date':d_total_value.keys(), 'Grandma':d_total_value.values()})
 
-        self.df_average_value = pd.concat(d_portfolio.values()).groupby('ticker')['current_value'].mean().reset_index()
+        cols_first, cols_fill = ['date','ticker'], ['portfolio_allocation', 'current_value']
+        self.df_adjustments = pd.concat(l_adjustments, ignore_index=True)
+        self.df_adjustments = self.df_adjustments[cols_first + list(self.df_adjustments.columns.drop(cols_first))]
+        self.df_adjustments[cols_fill] = self.df_adjustments[cols_fill].fillna(0)
+
+        cols_first, cols_fill = ['date','ticker'], ['current_value', 'current_portfolio_pct']
+        self.df_portfolio = pd.concat(l_portfolio, ignore_index=True)
+        self.df_portfolio = self.df_portfolio[cols_first + list(self.df_portfolio.columns.drop(cols_first))]
+        self.df_portfolio[cols_fill] = self.df_portfolio[cols_fill].fillna(0)
+
+        self.df_average_value = self.df_portfolio.groupby('ticker')['current_value'].mean().reset_index()
+        self.df_average_value['current_value'] = self.df_average_value['current_value'].fillna(0)
         self.df_average_value['avg_pct_allocation'] = self.df_average_value['current_value'] / self.df_average_value['current_value'].sum()
         self.df_average_value = self.df_average_value[['ticker', 'avg_pct_allocation']].copy()
