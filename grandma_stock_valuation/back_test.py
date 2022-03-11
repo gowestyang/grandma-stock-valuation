@@ -274,6 +274,6 @@ class GrandmaBackTester():
         self.d_adjustments = d_adjustments
         self.d_portfolio = d_portfolio
 
-
-
-
+        self.df_average_value = pd.concat(d_portfolio.values()).groupby('ticker')['current_value'].mean().reset_index()
+        self.df_average_value['avg_pct_allocation'] = self.df_average_value['current_value'] / self.df_average_value['current_value'].sum()
+        self.df_average_value = self.df_average_value[['ticker', 'avg_pct_allocation']].copy()
