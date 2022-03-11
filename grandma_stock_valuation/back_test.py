@@ -69,6 +69,10 @@ class GrandmaBackTester():
         self._index_start = None
         self._df_instrument_prices = None
 
+        self.d_total_value = None
+        self.d_adjustments = None
+        self.d_portfolio = Nones
+        self.df_average_value = None
 
     def _cleanInputData(self, d_instrument_data):
         """
@@ -148,6 +152,11 @@ class GrandmaBackTester():
         df_portfolio_i.drop(columns='new_price', inplace=True)
 
         total_value = df_portfolio_i['current_value'].sum()
+
+        if total_value > 0:
+            df_portfolio_i['current_portfolio_pct'] = df_portfolio_i['current_value'] / total_value
+        else:
+            df_portfolio_i['current_portfolio_pct'] = np.nan
 
         return df_portfolio_i, total_value
 
@@ -240,8 +249,8 @@ class GrandmaBackTester():
         d_instrument_data_i = self._getHistoricalData(self._df_instrument_prices, self._index_start, self._price_col)
         df_metrics_i = self._getAllocation(d_instrument_data_i, total_value=total_value_start)
 
-        cols_select = ['ticker','current_price','current_value']
-        df_portfolio_i = df_metrics_i[cols_select].copy()
+        cols_select = ['ticker','current_price','current_value','portfolio_allocation']
+        df_portfolio_i = df_metrics_i[cols_select].copy().rename(columns={'portfolio_allocation':'current_portfolio_pct'})
 
         d_total_value[dt] = total_value_start
         d_adjustments[dt] = df_metrics_i
@@ -260,7 +269,7 @@ class GrandmaBackTester():
 
                 d_instrument_data_i = self._getHistoricalData(self._df_instrument_prices, index_i, self._price_col)
                 df_metrics_i = self._getAllocation(d_instrument_data_i, total_value=total_value)
-                df_portfolio_i = df_metrics_i[cols_select].copy()
+                df_portfolio_i = df_metrics_i[cols_select].copy().rename(columns={'portfolio_allocation':'current_portfolio_pct'})
 
                 d_adjustments[dt] = df_metrics_i
                 if self.verbose > 0: self.printfunc(f"Adjust portfolio on {dt.date()}, total value = {total_value:.6f}")
