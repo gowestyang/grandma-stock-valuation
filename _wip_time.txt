@@ -1,0 +1,86 @@
+%load_ext line_profiler
+
+%lprun -f backtester.runBackTest backtester.runBackTest(d_instrument_data)
+
+
+
+Timer unit: 1e-07 s
+
+Total time: 36.8534 s
+File: c:\Users\gowes\Desktop\work\git\grandma_stock_valuation\grandma_stock_valuation\back_test.py
+Function: runBackTest at line 234
+
+Line #      Hits         Time  Per Hit   % Time  Line Contents
+==============================================================
+   234                                               def runBackTest(self, d_instrument_data):
+   235                                                   """
+   236                                                   Run back test.
+   237                                           
+   238                                                   Parameters
+   239                                                   ----------
+   240                                                   d_instrument_data : dict
+   241                                                       xxxx
+   242                                                   """
+   243         1     551287.0 551287.0      0.1          self._cleanInputData(d_instrument_data)
+   244                                           
+   245         1         16.0     16.0      0.0          d_total_value = {}
+   246         1          6.0      6.0      0.0          l_adjustments = []
+   247         1          5.0      5.0      0.0          l_portfolio = []
+   248                                           
+   249                                                   # initialize
+   250         1          5.0      5.0      0.0          total_value_start = 1
+   251         1        568.0    568.0      0.0          dt = self._df_instrument_prices.index[self._index_start]
+   252                                           
+   253         1      73103.0  73103.0      0.0          d_instrument_data_i = self._getHistoricalData(self._df_instrument_prices, self._index_start, self._price_col)
+   254         1    1266561.0 1266561.0      0.3          df_metrics_i = self._getAllocation(d_instrument_data_i, total_value=total_value_start)
+   255         1       6387.0   6387.0      0.0          df_metrics_i['date'] = dt
+   256                                           
+   257         1         19.0     19.0      0.0          cols_select = ['ticker','current_price','current_value','portfolio_allocation']
+   258         1      15513.0  15513.0      0.0          df_portfolio_i = df_metrics_i[cols_select].rename(columns={'portfolio_allocation':'current_portfolio_pct'})
+   259         1       6668.0   6668.0      0.0          df_portfolio_i['date'] = dt
+   260                                           
+   261         1         42.0     42.0      0.0          d_total_value[dt] = total_value_start
+   262         1          8.0      8.0      0.0          l_adjustments.append(df_metrics_i)
+   263         1          6.0      6.0      0.0          l_portfolio.append(df_portfolio_i)
+   264                                           
+   265         1       1065.0   1065.0      0.0          next_adjust_date = self._backtest_start_date + pd.DateOffset(months=self.adjust_freq_months)
+   266                                           
+   267      2516      22138.0      8.8      0.0          for index_i in range(self._index_start+1, len(self._df_instrument_prices)):
+   268                                           
+   269      2515    1037726.0    412.6      0.3              dt = self._df_instrument_prices.index[index_i]
+   270                                           
+   271      2515  262472325.0 104362.8     71.2              df_portfolio_i, total_value = self._updateValue(df_portfolio_i, self._df_instrument_prices, index_i)
+   272                                           
+   273      2515     112218.0     44.6      0.0              if dt >= next_adjust_date:
+   274        39      42373.0   1086.5      0.0                  next_adjust_date = next_adjust_date + pd.DateOffset(months=self.adjust_freq_months)
+   275                                           
+   276        39    2395480.0  61422.6      0.7                  d_instrument_data_i = self._getHistoricalData(self._df_instrument_prices, index_i, self._price_col)
+   277        39   75006014.0 1923231.1     20.4                  df_metrics_i = self._getAllocation(d_instrument_data_i, total_value=total_value)
+   278        39     557283.0  14289.3      0.2                  df_portfolio_i = df_metrics_i[cols_select].copy().rename(columns={'portfolio_allocation':'current_portfolio_pct'})
+   279                                           
+   280        39     215376.0   5522.5      0.1                  df_metrics_i['date'] = dt
+   281        39        725.0     18.6      0.0                  l_adjustments.append(df_metrics_i)
+   282        39     356073.0   9130.1      0.1                  if self.verbose > 0: self.printfunc(f"Adjust portfolio on {dt.date()}, total value = {total_value:.6f}")
+   283                                                       
+   284      2515      81091.0     32.2      0.0              d_total_value[dt] = total_value
+   285      2515   10062117.0   4000.8      2.7              df_portfolio_i['date'] = dt
+   286      2515      46195.0     18.4      0.0              l_portfolio.append(df_portfolio_i)
+   287                                           
+   288         1      11730.0  11730.0      0.0          if self.verbose > 0: self.printfunc(f"final portfolio increased by {total_value/total_value_start-1:.3f} over {self.backtest_years} years, which is {(total_value/total_value_start)**(1/self.backtest_years)-1:.4f} annualized growth.")
+   289                                           
+   290         1      47313.0  47313.0      0.0          self.df_total_value = pd.DataFrame({'date':d_total_value.keys(), 'Grandma':d_total_value.values()})
+   291                                           
+   292         1         16.0     16.0      0.0          cols_first, cols_fill = ['date','ticker'], ['portfolio_allocation', 'current_value']
+   293         1     121292.0 121292.0      0.0          self.df_adjustments = pd.concat(l_adjustments, ignore_index=True)
+   294         1      12238.0  12238.0      0.0          self.df_adjustments = self.df_adjustments[cols_first + list(self.df_adjustments.columns.drop(cols_first))]
+   295         1      15119.0  15119.0      0.0          self.df_adjustments[cols_fill] = self.df_adjustments[cols_fill].fillna(0)
+   296                                           
+   297         1         17.0     17.0      0.0          cols_first, cols_fill = ['date','ticker'], ['current_value', 'current_portfolio_pct']
+   298         1   13869728.0 13869728.0      3.8          self.df_portfolio = pd.concat(l_portfolio, ignore_index=True)
+   299         1      23416.0  23416.0      0.0          self.df_portfolio = self.df_portfolio[cols_first + list(self.df_portfolio.columns.drop(cols_first))]
+   300         1      57625.0  57625.0      0.0          self.df_portfolio[cols_fill] = self.df_portfolio[cols_fill].fillna(0)
+   301                                           
+   302         1      23558.0  23558.0      0.0          self.df_average_value = self.df_portfolio.groupby('ticker')['current_value'].mean().reset_index()
+   303         1       5909.0   5909.0      0.0          self.df_average_value['current_value'] = self.df_average_value['current_value'].fillna(0)
+   304         1       9311.0   9311.0      0.0          self.df_average_value['avg_pct_allocation'] = self.df_average_value['current_value'] / self.df_average_value['current_value'].sum()
+   305         1       8623.0   8623.0      0.0          self.df_average_value = self.df_average_value[['ticker', 'avg_pct_allocation']].copy()

@@ -143,20 +143,32 @@ def allocatePortfolio(valuations, transformation='exponential', scale=None, with
     """
     assert transformation in ['exponential', 'sigmoid'], "transformation must be 'exponential' or 'sigmoid'."
 
-    if len(valuations)==0:
+    n_valuations = len(valuations)
+    if n_valuations==0:
         return np.array([])
 
     ar_valuation = np.array(valuations).astype(float)
+    # if no valid valuation, distribute equally
+    if np.isnan(ar_valuation).sum() == n_valuations:
+        ar_valuation.fill(1 / n_valuations)
+        
     if weights is not None:
         ar_weights = np.array(weights).astype(float)
-        assert len(valuations)==len(weights), "valuations and weights should be the same length and in the smae order."
+        assert len(ar_weights) == n_valuations, "valuations and weights should be the same length and in the smae order."
+
+        # if no valid weights, distribute equally
+        if np.isnan(ar_weights).sum() == n_valuations:
+            ar_weights.fill(1 / n_valuations)
+        np.nan_to_num(ar_weights, copy=False, nan=0.0)
+        assert (ar_weights < 0).sum() == 0, "weights shall be all non-negative values."
+        assert ar_weights.sum() > 0, "Sum of weights shall be positive."
     else:
-        ar_weights = np.array([1/len(ar_valuation)]*len(ar_valuation))
+        ar_weights = np.array([1/n_valuations]*n_valuations)
         
     if scale is None:
-        n_instruments = len(ar_valuation) if not with_cash else len(ar_valuation)-1
-        if n_instruments > 1:
-            scale = 2 - 2 / n_instruments
+        n_non_cash_instruments = n_valuations if not with_cash else n_valuations-1
+        if n_non_cash_instruments > 1:
+            scale = 2 - 2 / n_non_cash_instruments
         else:
             scale = 1
     assert scale > 0, "scale should be a positive value."
@@ -169,5 +181,6 @@ def allocatePortfolio(valuations, transformation='exponential', scale=None, with
     ar_transformed = ar_transformed * ar_weights
 
     ar_portfolio = ar_transformed / np.nansum(ar_transformed)
+    np.nan_to_num(ar_portfolio, copy=False, nan=0.0)
 
     return ar_portfolio
