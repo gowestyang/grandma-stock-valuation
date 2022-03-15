@@ -31,9 +31,10 @@ class GrandmaBackTester():
     def __init__(self, backtest_years=10, adjust_freq_months=1,
                  init_parameters={'recent_months':0, 'train_years':10, 'min_train_years':5, 'date_end':None},
                  fit_parameters={'price_col':'close_adj', 'log':True, 'n_std':1.5},
-                 valuate_parameters={'min_annual_return':0.01},
+                 valuate_parameters={'value_by_years':True},
                  allocation_parameters={'transformation':'sigmoid', 'scale':1},
-                 with_cash=True, with_correlation_weights=True,
+                 with_cash=False,
+                 with_correlation_weights=True,
                  verbose=0,
                  printfunc=_printLevel):
         """

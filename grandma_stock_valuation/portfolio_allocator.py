@@ -116,7 +116,7 @@ def getCorrelationWeight(
     return d_weight
 
 
-def allocatePortfolio(valuations, transformation='exponential', scale=None, with_cash=False, weights=None) -> np.array:
+def allocatePortfolio(valuations, transformation='sigmoid', scale=1, with_cash=False, weights=None) -> np.array:
     """
     Determine the portfolio allocation based on valuations of a group of instruments.
 
@@ -130,6 +130,13 @@ def allocatePortfolio(valuations, transformation='exponential', scale=None, with
     scale : float
         Larger `scale` gives more weight to more under-valued instruments. Should be a positive value.
         If not provided, will compensate number of instruments `n` as `scale = 2 - 2/n`.
+        The default `scale=1` and `transformation=sigmoid` will yield:
+            *valuation = -2, sigmoid(scale, valuation) = 0.88*
+            *valuation = 0, sigmoid(scale, valuation) = 0.5*
+            *valuation = 2, sigmoid(scale, valuation) = 0.12*
+        The above should be used if *over_value_years* are used as valuation.
+        If *over_value_range* is used, suggest to set *scale = 10*.
+
     with_cash : bool
         If True and `scale=None`, will compensate number of instruments (including cash) `n` as `scale = 2 - 2/(n-1)`.
         Use this configuration when one of the instrument is cash.

@@ -209,7 +209,7 @@ class GrandmaStockValuation():
         return self
 
 
-    def evaluateValuation(self, min_annual_return=0.01) -> dict:
+    def evaluateValuation(self, value_by_years=True) -> dict:
         """
         Evaluate valuation metrics of the fitted data sets with the estimated trend.
 
@@ -217,8 +217,8 @@ class GrandmaStockValuation():
 
         Parameters
         ----------
-        min_annual_return : float
-            Minimum annual return required to calculate over-valued years.
+        value_by_years : bool
+            If True, also calculate `over_value_years`. See explaination below.
             
         Returns
         -------
@@ -230,11 +230,15 @@ class GrandmaStockValuation():
                 `current_price`: most recent price in the data.
                 `fair_price`: most recent estimated price in the data, based on the fitted trend.
                 `over_value_range`: `(current_price / fair_price) - 1`
-                `over_value_years`:
-                    If annualized_return >= `min_annual_return`:
-                        If `over_value_range >= 0`, use `over_value_range / annualized_return` to indicate number of years over-valued.
-                        If `over_value_range < 0`, use `over_value_range * annualized_return * 100` to give more weight to higher annualized retrun.
-                    else: use `nan`, as the model is not suitable to valuate instrument with little or negative growth.
+                `over_value_years`: only calculated with `value_by_years=True`.
+                    If *over_value_range >= 0*:
+                        If *annualized_return > 0*: use `over_value_range / annualized_return` to indicate number of years over-valued.
+                        If *annualized_return <= 0*: nan.
+                    If *over_value_range < 0*:
+                        If *annualized_return >= 1%*: use `over_value_range * annualized_return * 100`.
+                        If *annualized_return within ± 1%*: fix at `over_value_range * 1% * 100`
+                        If *annualized_return <= 1%*: use `over_value_range / annualized_return / 100`.
+                    Note that by these formulations, when *over_value_range* is 0, *over_value_years* is 0 regardless of any positive *annualized_return*.
         """
         df_train, df_recent = self._df_train.copy(), self._df_recent.copy()
 
@@ -254,11 +258,19 @@ class GrandmaStockValuation():
             self._fair_price = df_combine['trend'].iloc[-1]
             self._over_value_range = self._current_price / self._fair_price - 1
 
-            if self._annualized_return >= min_annual_return:
+            if value_by_years:
                 if self._over_value_range >= 0:
-                    self._over_value_years = self._over_value_range / self._annualized_return
+                    if self._annualized_return > 0:
+                        self._over_value_years = self._over_value_range / self._annualized_return
+                    else:
+                        self._over_value_years = np.nan
                 else:
-                    self._over_value_years = self._over_value_range * self._annualized_return * 100
+                    if self._annualized_return >= 0.01:
+                        self._over_value_years = self._over_value_range * self._annualized_return * 100
+                    elif self._annualized_return > -0.01:
+                        self._over_value_years = self._over_value_range * 0.01 * 100
+                    else:
+                        self._over_value_years = self._over_value_range / self._annualized_return / 100
             else:
                 self._over_value_years = np.nan
 
@@ -347,7 +359,7 @@ def batchValuation(
     d_instrument_data,
     init_parameters={'recent_months':0, 'train_years':10, 'min_train_years':5, 'date_end':None},
     fit_parameters={'price_col':'close_adj', 'log':True, 'n_std':1.5},
-    valuate_parameters={'min_annual_return':0.01},
+    valuate_parameters={'value_by_years':True},
     draw_figure=True,
     save_result=True,
     metric_file = None,
@@ -439,7 +451,9 @@ def _createDefaultOutputFolder():
         mkdir(image_folder)
 
 
-def addCashPortfolio(df_valuation_metrics, id_col='ticker', cash_name='cash', value_col='over_value_years', cash_value=0.0) -> pd.DataFrame:
+def addCashPortfolio(df_valuation_metrics, id_col='ticker', cash_name='cash',
+                     growth_col='annualized_return', growth_value=0.0,
+                     value_col='over_value_years', cash_value=0.0) -> pd.DataFrame:
     """
     Add cash into the valuation metrics of an existing portfolio.
 
@@ -452,6 +466,11 @@ def addCashPortfolio(df_valuation_metrics, id_col='ticker', cash_name='cash', va
         Column in `df_valuation_metrics` as the identifier of the instruments in the portfolio.
     cash_name: str
         A name, such as "cash", to be appended to the `id_col`.
+    growth_col: str or None
+        Column in `df_valuation_metrics` with annualized return of each instruments in the portfolio.
+        If None, will not be used.
+    growth_value: float
+        Annualized return of cash, such as 0.
     value_col: str
         Column in `df_valuation_metrics` with the valuations of each instruments in the portfolio.
     cash_value: float
@@ -462,8 +481,13 @@ def addCashPortfolio(df_valuation_metrics, id_col='ticker', cash_name='cash', va
     pandas.DataFrame
         The updated valuation metrics with an additonal row indicating cahs.
     """
-    df_cash = pd.Series({id_col:cash_name, value_col:cash_value}).to_frame().T
-    df_portfolio = pd.concat([df_valuation_metrics, df_cash], ignore_index=True)
-    df_portfolio[value_col] = df_portfolio[value_col].astype(float)
+    d_cash = {id_col:cash_name, value_col:cash_value}
+    if growth_col is not None:
+        d_cash = {**d_cash, growth_col:growth_value}
+    df_cash = pd.Series(d_cash).to_frame().T
+    df_portfolio = pd.concat([df_valuation_metrics, df_cash], ignore_index=True, copy=False)
+    df_portfolio[value_col] = df_portfolio[value_col].astype(float, copy=False)
+    if growth_col is not None:
+        df_portfolio[growth_col] = df_portfolio[growth_col].astype(float, copy=False)
 
     return df_portfolio
