@@ -127,7 +127,7 @@ class YahooDataLoader():
         return yahoo_sec
 
 
-    def _queryYahooUrl(self, url, name, map_cols=None) -> pd.DataFrame:
+    def _queryYahooUrl(self, url, date_col, price_col, name, map_cols=None) -> pd.DataFrame:
         """
         Function to query Yahoo data from a url.
 
@@ -135,6 +135,10 @@ class YahooDataLoader():
         ----------
         url : str
             The Yahoo url to query from.
+        date_col : str
+            Column of date.
+        price_col : str
+            Column of price, which should contain only positive values.
         name : str
             Name of data to be queried; only used for logging and output file name.
         map_cols: dict of {str:str} | None
@@ -148,7 +152,9 @@ class YahooDataLoader():
         df = pd.DataFrame()
 
         try:
-            df = pd.read_csv(url).dropna().sort_values('Date', ignore_index=True)
+            df = pd.read_csv(url).dropna()
+            df = df[df[price_col]>0]
+            df.sort_values(date_col, ignore_index=True, inplace=True)
             if map_cols is not None:
                 df.rename(columns=map_cols, inplace=True)
             
@@ -240,8 +246,10 @@ class YahooDataLoader():
         self._url_eod = s_head+self.ticker+'?period1='+str(self._sec_start)+'&period2='+str(self._sec_end)+s_tail
 
         df_query = self._queryYahooUrl(
-            url = self._url_eod,
-            name = 'EOD',
+            url=self._url_eod,
+            date_col='Date',
+            price_col='Close',
+            name='EOD',
             map_cols={
                 'Date':'date',
                 'Open':'open', 'High': 'high', 'Low':'low', 'Close':'close',
@@ -285,8 +293,10 @@ class YahooDataLoader():
         self._url_dividend = s_head+self.ticker+'?period1='+str(self._sec_start)+'&period2='+str(self._sec_end)+s_tail
 
         df_query = self._queryYahooUrl(
-            url = self._url_dividend,
-            name = 'dividend',
+            url=self._url_dividend,
+            date_col='Date',
+            price_col='Dividends',
+            name='dividend',
             map_cols={'Date':'date', 'Dividends':'dividend'}
         )
         

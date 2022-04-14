@@ -1,43 +1,35 @@
 """
 Grandma Stock Valuation (GSV) Model.
-
 """
 
 from typing import Tuple
-import numpy as np
-import pandas as pd
-import logging
-from sklearn.linear_model import LinearRegression
-import plotly.graph_objects as go
 from os import mkdir, path
 from datetime import date
+import numpy as np
+import pandas as pd
+from sklearn.linear_model import LinearRegression
+import plotly.graph_objects as go
+from . import grandma_base
 
-
-DEFAULT_OUTPUT_FOLDER = '_output'
-
-
-def _printLevel(*args, level=logging.INFO):
-    """
-    A wrapper over `print` to support `level` argument.
-    """
-    print(*args)
-
+LOGPRINT = grandma_base.logger.logPandas
+DEFAULT_IMAGE_FOLDER = '_image'
 
 class GrandmaStockValuation():
     """
     Class of regression based Grandma Stock Valuation model.
     """
 
-    def __init__(self, recent_months=0, train_years=10, min_train_years=5, date_end=None, verbose=0, printfunc=_printLevel) -> None:
+    def __init__(self, recent_months=0, train_years=10, min_train_years=5, date_end=None, verbose=0) -> None:
         """
         Initialize the Grandma Stock Valuation model.
 
         Parameters
         ----------
         recent_months : int
-            Number of recent months, before `date_end`, to exclude from model fitting.
+            Number of recent months, before `date_end`, to be excluded from model fitting.
+            Use this parameter if you have a strong view that recent period is very abnormal and should be excluded.
         train_years : int
-            Maximum years of historical data, after excluding `recent_months`, for model fitting.
+            Maximum years of historical data, after excluding `recent_months`, used for model fitting.
         min_train_years : int
             Minimum years of historical data required for model fitting.
         date_end : str ("yyyy-mm-dd") | date | None
@@ -45,15 +37,12 @@ class GrandmaStockValuation():
             If None, use the latest date in the input data.
         verbose : int
             2 to print detailed information; 1 to print high-level information; 0 to suppress print.
-        printfunc : func
-            Function to output messages, which should support the `level` argument.
         """
         self.recent_months = recent_months
         self.train_years = train_years
         self.min_train_years = min_train_years
         self.date_end = date_end
         self.verbose = verbose
-        self.printfunc = printfunc
 
         self._df_train = None
         self._df_recent = None
@@ -67,7 +56,7 @@ class GrandmaStockValuation():
         self._over_value_range = np.nan
 
 
-    def _splitTrainRecent(self, input_data, price_col) -> Tuple[pd.DataFrame, pd.DataFrame]:
+    def _splitTrainRecent(self, input_data, price_col, is_positive, is_sorted) -> Tuple[pd.DataFrame, pd.DataFrame]:
         """
         Split the input data into train and recent data sets.
 
@@ -79,7 +68,13 @@ class GrandmaStockValuation():
             Input data. It needs to contain a `date` column and a price column.
         price_col : str
             The column name in `input_data` to indicate price.
-        
+        is_positive : bool
+            Indicate whether the input data has all positive price values.
+            If False, the script will filter out non-positive price values.
+        is_sorted : bool
+            Indicate whether the input data has already been sorted by date.
+            If False, the script will do the sorting.
+
         Returns
         -------
         pandas.DataFrame
@@ -90,14 +85,18 @@ class GrandmaStockValuation():
         df_train0, df_recent0 = pd.DataFrame(columns=['date','price']), pd.DataFrame(columns=['date','price'])
 
         if len(input_data) <= 1:
-            if self.verbose > 1: self.printfunc(f"Input data contains len{input_data} rows - not enough to train model.")
+            if self.verbose > 1: LOGPRINT(f"Input data contains len{input_data} rows - not enough to train model.")
             return df_train0, df_recent0
 
         df0 = input_data.copy()
-        df0['date'] = pd.to_datetime(df0['date'])
-        df0 = df0[df0[price_col]>0].sort_values('date').reset_index(drop=True)
+        if not str(df0['date'].dtype).startswith('datetime'):
+            df0['date'] = pd.to_datetime(df0['date'])
+        if not is_positive:
+            df0 = df0[df0[price_col]>0].reset_index(drop=True)
+        if not is_sorted:
+            df0.sort_values('date', ignore_index=True, inplace=True)
         if len(df0) <= 1:
-            if self.verbose > 1: self.printfunc(f"Input data contains {len(df0)} valid price - not enough to train model.")
+            if self.verbose > 1: LOGPRINT(f"Input data contains {len(df0)} valid price - not enough to train model.")
             return df_train0, df_recent0
         
         if self.date_end is None:
@@ -106,12 +105,12 @@ class GrandmaStockValuation():
             date_recent_end = min(pd.to_datetime(self.date_end), df0['date'].max())
         date_recent_end = date_recent_end.floor('D') + pd.DateOffset(days=1)
         date_recent_start = date_recent_end - pd.DateOffset(months=self.recent_months)
-        date_train_end = date_recent_start
 
+        date_train_end = date_recent_start
         date_train_start_needed = date_train_end - pd.DateOffset(years=self.min_train_years)
-        date_first = df0['date'].min()
-        if date_first >= date_train_start_needed:
-            if self.verbose > 1: self.printfunc(f"Not enough training data to fit the model.")
+        date_first = df0['date'].min().floor('D')
+        if date_first > date_train_start_needed:
+            if self.verbose > 1: LOGPRINT(f"Not enough training data to fit the model.")
             return df_train0, df_recent0
 
         date_train_start = date_train_end - pd.DateOffset(years=self.train_years)
@@ -120,19 +119,21 @@ class GrandmaStockValuation():
         cols_select = ['date', price_col]
         cols_map = {price_col:'price'}
 
-        df_train0 = df0[(df0['date']>=date_train_start) & (df0['date']<date_train_end)][cols_select].reset_index(drop=True).rename(columns=cols_map)
-        if self.verbose > 1: self.printfunc(f"Train data contains {len(df_train0)} rows over {df_train0['date'].nunique()} dates from {df_train0['date'].min().date()} to {df_train0['date'].max().date()}.")
+        index_train0 = (df0['date']>=date_train_start) & (df0['date']<date_train_end)
+        df_train0 = df0[index_train0][cols_select].reset_index(drop=True).rename(columns=cols_map)
+        if self.verbose > 1: LOGPRINT(f"Train data contains {len(df_train0)} rows over {df_train0['date'].nunique()} dates from {df_train0['date'].min().date()} to {df_train0['date'].max().date()}.")
 
-        df_recent0 = df0[(df0['date']>=date_recent_start) & (df0['date']<date_recent_end)][cols_select].reset_index(drop=True).rename(columns=cols_map)
+        index_recent0 = (df0['date']>=date_recent_start) & (df0['date']<date_recent_end)
+        df_recent0 = df0[index_recent0][cols_select].reset_index(drop=True).rename(columns=cols_map)
         if len(df_recent0) > 0:
-            if self.verbose > 1: self.printfunc(f"Recent data contains {len(df_recent0)} rows over {df_recent0['date'].nunique()} dates from {df_recent0['date'].min().date()} to {df_recent0['date'].max().date()}.")
+            if self.verbose > 1: LOGPRINT(f"Recent data contains {len(df_recent0)} rows over {df_recent0['date'].nunique()} dates from {df_recent0['date'].min().date()} to {df_recent0['date'].max().date()}.")
         else:
-            if self.verbose > 1: self.printfunc(f"No recent data specified.")
+            if self.verbose > 1: LOGPRINT(f"No recent data specified.")
         
         return df_train0, df_recent0
 
 
-    def fitTransform(self, input_data, price_col='close_adj', log=True, n_std=1.5):
+    def fitTransform(self, input_data, price_col, is_positive=False, is_sorted=False, log=True, n_std=1):
         """
         Fit model, identify outliers, and estimate trend.
 
@@ -142,8 +143,13 @@ class GrandmaStockValuation():
             Daily price data of the insturment.
             It should contain a `date` column and a price column named by `price_col`.
         price_col : str
-            The column name in `input_data` to indicate daily price.
-            Suggest to use the adjusted price.
+            The column name in `input_data` to be used as daily price.
+        is_positive : bool
+            Indicate whether the input data has all positive price values.
+            If False, the script will filter out non-positive price values.
+        is_sorted : bool
+            Indicate whether the input data has already been sorted by date.
+            If False, the script will do the sorting.
         log : bool
             If True, fit log-linear regression. If False, fit linear regression.
         n_std : float
@@ -154,56 +160,58 @@ class GrandmaStockValuation():
         GrandmaStockValuation
             The fitted model.
         """
-        df_train, df_recent = self._splitTrainRecent(input_data, price_col)
+        df_train, df_recent = self._splitTrainRecent(input_data, price_col, is_positive, is_sorted)
 
-        if len(df_train) > 1:
-            if self.verbose > 1: self.printfunc("Fit regression...")
-            df_train['x'] = range(len(df_train))
-            x_train_max = df_train['x'].max()
-            x_train = np.array(df_train['x']).reshape(-1, 1)
+        n_train = len(df_train)
+        if n_train > 1:
+            if self.verbose > 1: LOGPRINT("Fit regression...")
+            x_train = range(n_train)
+            x_train_max = x_train.max()
+            x_train = np.array(x_train).reshape(-1, 1)
 
-            y_train = np.log(df_train['price']) if log else df_train['price']
+            y_train = df_train['price'].to_numpy()
+            if log:
+                y_train = np.log(y_train)
 
+            # In this use case, it has similar training and predicting speed as scipy.stats.linregress
             lm = LinearRegression().fit(x_train, y_train)
-
             y_pred = lm.predict(x_train)
-            df_train['trend'] = np.exp(y_pred) if log else y_pred
-            df_train['residual'] = y_pred - y_train
 
-            residual_std = df_train['residual'].std()
-            residual_mean = df_train['residual'].mean()
+            residuals = y_pred - y_train
+            residual_std, residual_mean = residuals.std(), residuals.mean()
             upper_bond = residual_mean + n_std * residual_std
             lower_bond = residual_mean - n_std * residual_std 
 
-            df_train['is_outlier'] = (df_train['residual'] > upper_bond) | (df_train['residual'] < lower_bond)
-            if self.verbose > 1: self.printfunc(f"{df_train['is_outlier'].sum()} out of {len(df_train)} dates are outliers.")
+            non_outliers = (residuals > lower_bond) & (residuals < upper_bond)
+            df_train['is_outlier'] = ~ non_outliers
+            if self.verbose > 1: LOGPRINT(f"{df_train['is_outlier'].sum()} out of {n_train} dates are outliers.")
 
-            if self.verbose > 1: self.printfunc("Re-fit wihtout outliers...")
-            index_select = ~df_train['is_outlier']
-            x_train_filter = np.array(df_train[index_select]['x']).reshape(-1, 1)
-            y_train_filter = np.log(df_train[index_select]['price']) if log else df_train[index_select]['price']
+            if self.verbose > 1: LOGPRINT("Re-fit wihtout outliers...")
+
+            x_train_filter, y_train_filter = x_train[non_outliers], y_train[non_outliers]
             lm = LinearRegression().fit(x_train_filter, y_train_filter)
             y_pred = lm.predict(x_train)
             df_train['trend'] = np.exp(y_pred) if log else y_pred
 
             df_train['is_recent'] = False
-            df_train.drop(columns=['residual'], inplace=True)
 
-            if len(df_recent) > 0:
-                if self.verbose > 1: self.printfunc("Extend trend to recent data.")
-                df_recent['x'] = np.arange(0, len(df_recent)) + x_train_max + 1
-                x_recent = np.array(df_recent['x']).reshape(-1, 1)
+            n_recent = len(df_recent)
+            if n_recent > 0:
+                if self.verbose > 1: LOGPRINT("Extend trend to recent data.")
+                x_recent = (np.arange(0, n_recent) + x_train_max + 1).reshape(-1, 1)
                 y_recent = lm.predict(x_recent)
                 df_recent['trend'] = np.exp(y_recent) if log else y_recent
                 df_recent['is_outlier'] = False
                 df_recent['is_recent'] = True
             else:
-                if self.verbose > 1: self.printfunc("No recent data to estimate.")
+                if self.verbose > 1: LOGPRINT("No recent data to estimate.")
             
             self._fitted_model = lm
+        else:
+            if self.verbose > 1: LOGPRINT("Not enough training data to fit the model.")
             
         self._df_train, self._df_recent = df_train, df_recent
-        if self.verbose > 1: self.printfunc("Complete model fitting!")
+        if self.verbose > 1: LOGPRINT("Complete model fitting!")
 
         return self
 
@@ -257,8 +265,8 @@ class GrandmaStockValuation():
                 }
 
             if self.verbose > 1:
-                self.printfunc(f"R2 train = {self._r2_train:.3}, train years = {self._train_years:.3}, annualize return = {self._annualized_growth:.3}.")
-                self.printfunc(f"current price = {self._current_price:.3}, fair price = {self._fair_price:.3}, over-value range = {self._over_value_range:.3}.")
+                LOGPRINT(f"R2 train = {self._r2_train:.3}, train years = {self._train_years:.3}, annualize return = {self._annualized_growth:.3}.")
+                LOGPRINT(f"current price = {self._current_price:.3}, fair price = {self._fair_price:.3}, over-value range = {self._over_value_range:.3}.")
 
         else:
             self._r2_train = np.nan
@@ -334,7 +342,6 @@ def batchValuation(
     metric_file = None,
     figure_folder = None,
     verbose=0,
-    printfunc=_printLevel,
     **kwargs
 ) -> Tuple[pd.DataFrame, dict]:
     """
@@ -361,8 +368,6 @@ def batchValuation(
         If `None`, save to the default folder "_output/images/"
     verbose : int
         2 to print detailed information; 1 to print high-level information; 0 to suppress print.
-    printfunc : func
-        Function to output messages, which should support the `level` argument.
     **kwargs
         Additional key-word arguments passed to `GrandmaStockValuation.plotTrendline()`.
 
@@ -375,19 +380,19 @@ def batchValuation(
         The keys are the tickers, and values are the figures.
     """
     if metric_file is None:
-        metric_file = path.join(DEFAULT_OUTPUT_FOLDER, f'valuation_metrics_{date.today()}.csv')
+        metric_file = path.join(DEFAULT_IMAGE_FOLDER, f'valuation_metrics_{date.today()}.csv')
         _createDefaultOutputFolder()
     
     if figure_folder is None:
-        figure_folder = path.join(DEFAULT_OUTPUT_FOLDER, 'images')
+        figure_folder = path.join(DEFAULT_IMAGE_FOLDER, 'images')
         _createDefaultOutputFolder()
 
     l_metrics = []
     d_fig = {}
     for ticker, df in d_instrument_data.items():
 
-        if verbose > 0: printfunc(f"Valuating {ticker}...")
-        grandma = GrandmaStockValuation(verbose=verbose, printfunc=printfunc, **init_parameters)
+        if verbose > 0: LOGPRINT(f"Valuating {ticker}...")
+        grandma = GrandmaStockValuation(verbose=verbose, **init_parameters)
         grandma.fitTransform(df, **fit_parameters)
         d_metrics = grandma.evaluateValuation()
         df_metrics = pd.Series({'ticker':ticker, **d_metrics}).to_frame().T
@@ -409,10 +414,10 @@ def _createDefaultOutputFolder():
     """
     Create the default output folders if not existed.
     """
-    if not path.exists(DEFAULT_OUTPUT_FOLDER):
-        mkdir(DEFAULT_OUTPUT_FOLDER)
+    if not path.exists(DEFAULT_IMAGE_FOLDER):
+        mkdir(DEFAULT_IMAGE_FOLDER)
 
-    image_folder = path.join(DEFAULT_OUTPUT_FOLDER, 'images')
+    image_folder = path.join(DEFAULT_IMAGE_FOLDER, 'images')
     if not path.exists(image_folder):
         mkdir(image_folder)
 
