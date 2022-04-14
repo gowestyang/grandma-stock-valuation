@@ -61,7 +61,7 @@ class GrandmaStockValuation():
 
         self._r2_train = np.nan
         self._train_years = np.nan
-        self._annualized_return = np.nan
+        self._annualized_growth = np.nan
         self._current_price = np.nan
         self._fair_price = np.nan
         self._over_value_range = np.nan
@@ -224,7 +224,7 @@ class GrandmaStockValuation():
             Valuation metrics:
                 `R2_train`: R2 of the fitted model on train data, with outliers removed.
                 `train_years`: number of years actually used to fit the model.
-                `annualized_return`: average annualized return derived from the fitted trend.
+                `annualized_growth`: average annualized growth derived from the fitted trend.
                 `current_price`: most recent price in the data.
                 `fair_price`: most recent estimated price in the data, based on the fitted trend.
                 `over_value_range`: `(current_price / fair_price) - 1`
@@ -240,7 +240,7 @@ class GrandmaStockValuation():
             self._train_years = (date_train_end - date_train_start).days / 365
             trend_train_start = df_train['trend'].iloc[0]
             trend_train_end = df_train['trend'].iloc[-1]
-            self._annualized_return = (trend_train_end / trend_train_start)**(1/self._train_years) - 1
+            self._annualized_growth = (trend_train_end / trend_train_start)**(1/self._train_years) - 1
 
             df_combine = pd.concat([df_train, df_recent]).reset_index(drop=True)
             self._current_price = df_combine['price'].iloc[-1]
@@ -250,20 +250,20 @@ class GrandmaStockValuation():
             d_metric = {
                 'r2_train':self._r2_train,
                 'train_years':self._train_years,
-                'annualized_return':self._annualized_return,
+                'annualized_growth':self._annualized_growth,
                 'current_price':self._current_price,
                 'fair_price':self._fair_price,
                 'over_value_range':self._over_value_range
                 }
 
             if self.verbose > 1:
-                self.printfunc(f"R2 train = {self._r2_train:.3}, train years = {self._train_years:.3}, annualize return = {self._annualized_return:.3}.")
+                self.printfunc(f"R2 train = {self._r2_train:.3}, train years = {self._train_years:.3}, annualize return = {self._annualized_growth:.3}.")
                 self.printfunc(f"current price = {self._current_price:.3}, fair price = {self._fair_price:.3}, over-value range = {self._over_value_range:.3}.")
 
         else:
             self._r2_train = np.nan
             self._train_years = np.nan
-            self._annualized_return = np.nan
+            self._annualized_growth = np.nan
             self._current_price = np.nan
             self._fair_price = np.nan
             self._over_value_range = np.nan
@@ -271,7 +271,7 @@ class GrandmaStockValuation():
         d_metric = {
             'r2_train':self._r2_train,
             'train_years':self._train_years,
-            'annualized_return':self._annualized_return,
+            'annualized_growth':self._annualized_growth,
             'current_price':self._current_price,
             'fair_price':self._fair_price,
             'over_value_range':self._over_value_range
@@ -418,7 +418,7 @@ def _createDefaultOutputFolder():
 
 
 def addCashPortfolio(df_valuation_metrics, id_col='ticker', cash_name='cash',
-                     growth_col='annualized_return', growth_value=0.0,
+                     growth_col='annualized_growth', growth_value=0.0,
                      value_col='over_value_range', cash_value=0.0) -> pd.DataFrame:
     """
     Add cash into the valuation metrics of an existing portfolio.
@@ -450,8 +450,10 @@ def addCashPortfolio(df_valuation_metrics, id_col='ticker', cash_name='cash',
     d_cash = {id_col:cash_name, value_col:cash_value}
     if growth_col is not None:
         d_cash = {**d_cash, growth_col:growth_value}
+
     df_cash = pd.Series(d_cash).to_frame().T
     df_portfolio = pd.concat([df_valuation_metrics, df_cash], ignore_index=True, copy=False)
+
     df_portfolio[value_col] = df_portfolio[value_col].astype(float, copy=False)
     if growth_col is not None:
         df_portfolio[growth_col] = df_portfolio[growth_col].astype(float, copy=False)
@@ -459,103 +461,126 @@ def addCashPortfolio(df_valuation_metrics, id_col='ticker', cash_name='cash',
     return df_portfolio
 
 
-def getOverValueYears(over_value_range, annualized_return):
+def adjValueWithGrowth(over_value_range, annualized_growth, method='subtract', growth_scale=None):
     """
-    Calculate `over_value_years` based on `over_value_range` and `annualized_return`.
+    Adjust `over_value_range` with `annualized_growth` by the specified `method`.
 
-    If `over_value_range >= 0`:
-        If `annualized_return > 0`: use `over_value_range / annualized_return` to indicate number of years over-valued.
-        If `annualized_return <= 0`: nan.
-    If `over_value_range < 0`:
-        If `annualized_return >= 1%`: use `over_value_range * annualized_return * 100`.
-        If `annualized_return within ± 1%`: fix at `over_value_range * 1% * 100 = over_value_range`
-        If `annualized_return <= 1%`: use `over_value_range / annualized_return / 100`.
-    Note:
-        By the formulations, when `over_value_range` is 0, `over_value_years` is 0 regardless of any positive scale of `annualized_return`.
+    If `method='subtract'`, refer to `_subtractValueGrowth()`.
+    If `method='divide'`, refer to `_divideValueGrowth()`.
 
     Parameters
     ----------
     over_value_range : single-dimensional array like object
         Valuations of a group of instruments.
         It is usually the `over_value_range` column in the output of `grandma_stock_valuation.batchValuation()` function.
-    annualized_return: single-dimensional array like object
-        Annualized return of each instrument, whose order should be aligned with the values in `over_value_range`.
+    annualized_growth : single-dimensional array like object
+        Annualized growth of each instrument, whose order should be aligned with the values in `over_value_range`.
+    method : str
+        The method to adjust the valuation. Can be "subtract" or "divide".
+    growth_scale : float
+        The scale used to adjust annualized growth before being subtracted.
+        If `method='subtract'`, default to 1.
+        If `method='divide'`, default to 0.1.
 
     Returns
     -------
     numpy.array
-        Over-value by years of each instrument.
+        Over-value score adjusted by annualized growth of each instrument.
     """
-    assert len(over_value_range) == len(annualized_return), "valuations and returns should be the same length and in the smae order."
+    assert method in ['subtract', 'divide'], "method should be 'subtract' or 'divide'."
 
-    def _calc_one_overvalue_year(t_values):
-        _over_value_range, _annualized_return = t_values
+    over_value_range = np.array(over_value_range)
+    annualized_growth = np.array(annualized_growth)
+    assert len(over_value_range) == len(annualized_growth), "valuations and growth should be the same length and in the smae order."
+
+    if growth_scale is None:
+        if method == 'subtract':
+            growth_scale = 1
+        else:
+            growth_scale = 0.1
+
+    if method == 'subtract':
+        return _subtractValueGrowth(over_value_range, annualized_growth, growth_scale)
+    else:
+        return _divideValueGrowth(over_value_range, annualized_growth, growth_scale)
+
+
+def _subtractValueGrowth(over_value_range, annualized_growth, growth_scale):
+    """
+    Adjust `over_value_range` with `annualized_growth` by subtraction.
+
+    Adjusted over-value score = `over_value_range - growth_scale * annualized_growth`
+
+    Parameters
+    ----------
+    over_value_range : single-dimensional array like object
+        Valuations of a group of instruments.
+        It is usually the `over_value_range` column in the output of `grandma_stock_valuation.batchValuation()` function.
+    annualized_growth : single-dimensional array like object
+        Annualized growth of each instrument, whose order should be aligned with the values in `over_value_range`.
+    growth_scale : float
+        The scale used to adjust annualized growth before being subtracted.
+
+    Returns
+    -------
+    numpy.array
+        Over-value score adjusted by annualized growth of each instrument.
+    """
+
+    return over_value_range - growth_scale*annualized_growth
+    
+
+def _divideValueGrowth(over_value_range, annualized_growth, growth_scale=0.2):
+    """
+    Calculate `over_value_years` based on `over_value_range` and `annualized_growth`.
+
+    Step 1:
+        If `over_value_range >= 0`:
+            If `annualized_growth > 0`: use `over_value_range / annualized_growth` to indicate number of years over-valued.
+            If `annualized_growth <= 0`: nan.
+        If `over_value_range < 0`:
+            If `annualized_growth >= 1%`: use `over_value_range * annualized_growth * 100`.
+            If `annualized_growth within ± 1%`: fix at `over_value_range * 1% * 100 = over_value_range`
+            If `annualized_growth <= 1%`: use `over_value_range / annualized_growth / 100`.
+    Step 2:
+        Divide by 10 to keep similar magnitude as `over_value_range`.
+    Step 3"
+        Subtract `growth_scale * annualized_growth`. This is mainly to account for growth when over-value range is very close to 0.
+        Because without this step, the result will always be 0 if over-value range is 0, regardless of growth.
+
+    Parameters
+    ----------
+    over_value_range : single-dimensional array like object
+        Valuations of a group of instruments.
+        It is usually the `over_value_range` column in the output of `grandma_stock_valuation.batchValuation()` function.
+    annualized_growth : single-dimensional array like object
+        Annualized growth of each instrument, whose order should be aligned with the values in `over_value_range`.
+    growth_scale : float
+        The scale used to adjust annualized growth before being subtracted.
+        Here the growth_scale is mainly for tie-breaker near 0 valuation.
+
+    Returns
+    -------
+    numpy.array
+        Over-value score adjusted by annualized growth of each instrument.
+    """
+    def _calc_one_overvalue_year(t_values, growth_scale=growth_scale):
+        _over_value_range, _annualized_growth = t_values
         if _over_value_range >= 0:
-            if _annualized_return > 0:
-                return _over_value_range / _annualized_return
+            if _annualized_growth > 0:
+                score = _over_value_range / _annualized_growth
             else:
                 return np.nan
         else:
-            if _annualized_return >= 0.01:
-                return _over_value_range * _annualized_return * 100
-            elif _annualized_return > -0.01:
-                return _over_value_range
+            if _annualized_growth >= 0.01:
+                score = _over_value_range * _annualized_growth * 100
+            elif _annualized_growth > -0.01:
+                score = _over_value_range
             else:
-                return _over_value_range / (- _annualized_return) / 100
+                score = _over_value_range / (- _annualized_growth) / 100
+        
+        score = score/10 - growth_scale*_annualized_growth
 
-    return np.array(list(map(_calc_one_overvalue_year, zip(over_value_range, annualized_return))))
+        return score
 
-
-def getOverValueSubtract(over_value_range, annualized_return, growth_scale=0.2):
-    """
-    Calculate the modified `over_value_range` as `over_value_range - growth_scale * annualized_return`.
-
-    Parameters
-    ----------
-    over_value_range : single-dimensional array like object
-        Valuations of a group of instruments.
-        It is usually the *over_value_range* column in the output of `grandma_stock_valuation.batchValuation()` function.
-    annualized_return: single-dimensional array like object
-        Annualized return of each instrument, whose order should be aligned with the values in `over_value_range`.
-    growth_scale : float
-        The scale used to adjust annualized return before subtracting.
-
-    Returns
-    -------
-    numpy.array
-        Over-value by years of each instrument.
-    """
-    assert len(over_value_range) == len(annualized_return), "valuations and returns should be the same length and in the smae order."
-
-    return np.array(over_value_range) - growth_scale * np.array(annualized_return)
-
-
-def caliValueWithGrowth(over_value_range, annualized_return, method='years', growth_scale=0.2):
-    """
-    Calibrate the `over_value_range` with `annualized_return`.
-
-    Parameters
-    ----------
-    over_value_range : single-dimensional array like object
-        Valuations of a group of instruments.
-        It is usually the *over_value_range* column in the output of `grandma_stock_valuation.batchValuation()` function.
-    annualized_return: single-dimensional array like object
-        Annualized return of each instrument, whose order should be aligned with the values in `over_value_range`.
-    method: str
-        If 'years', calibrate using `getOverValueYears()`. Note that the result will be divided by 10 to keep values in a similar scale.
-        If 'subtract', calibrate using `getOverValueSubtract()`.
-    growth_scale : float
-        For `method='subtract'`, the scale used to adjust annualized return before subtracting, 
-
-    Returns
-    -------
-    numpy.array
-        Calibrate over-value score of each instrument.
-    """
-    assert method in ('years', 'subtract'), "method shall be 'years' or 'subtract'."
-    
-    if method == 'years':
-        return getOverValueYears(over_value_range, annualized_return) / 10
-    
-    if method == 'subtract':
-        return getOverValueSubtract(over_value_range, annualized_return, growth_scale=growth_scale)
+    return np.array(list(map(_calc_one_overvalue_year, zip(over_value_range, annualized_growth))))

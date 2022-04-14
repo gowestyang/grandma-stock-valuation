@@ -117,43 +117,54 @@ def getCorrelationWeight(
     return d_weight
 
 
-def allocatePortfolio(valuations, transformation='sigmoid', scale=20, with_cash=False, weights=None) -> np.array:
+def allocatePortfolio(valuations, transformation='sigmoid', scale=None, center=-0.1, lower_bound=-0.3, weights=None) -> np.array:
     """
     Determine the portfolio allocation based on valuations of a group of instruments.
 
     Parameters
     ----------
     valuations : single-dimensional array like object
-        Valuations of a group of `n` instruments. The valuation should be a representation of "% over-valued", etc.
+        Valuation scores of a group of `n` instruments.
     transformation : str
-        Possible values are "sigmoid" or "exponential".
-        "sigmoid" is suggested, because it weights over-valued and under-valued instruments symmetrically.
-        "exponential" trends to place too much weights on very-under-valued instruments.
+        Possible values are 'sigmoid', 'linear' or 'exponential'.
     scale : float
         Larger `scale` gives more weight to more under-valued instruments. Should be a positive value.
-        The default `scale=20` and `transformation=sigmoid` will yield:
-            `valuation = -0.2, sigmoid(scale, valuation) = 0.98`
-            `valuation = 0, sigmoid(scale, valuation) = 0.5`
-            `valuation = 0.2, sigmoid(scale, valuation) = 0.02`
-    with_cash : bool
-        If True and `scale=None`, will compensate number of instruments (including cash) `n` as `scale = 2 - 2/(n-1)`.
-        Use this configuration when one of the instrument is cash.
+        if `None`, default based on `transformation`:
+            'sigmoid' : default to 15
+            'linear' or 'exponential' : default to 5
+    center : float
+        At this value, `trasformation(center) = 1`
+    lower_bound : float
+        Under-value (negative valuation) will be capped by this parameter.
     weights : single-dimensional array like object
         Weight pre-allocated to each instrument, whose order should be aligned with the values in `valuations`.
     
+    For a given valuation `v`,
+        `exponential(v) = exp(- scale * (v - center))`
+            Exponential transformation weights heavily (increasing slope) to very negative (under-valued) valuation.
+            `lower_bound` should be used to prevent too much weight alloccated to one very under-valued instrument.
+        `linear(v) = 1 / (scale * (v - center) + 1)` if `v > center`, else `1 - scale * (v - center)`
+            Linear transformation applies linear weight (constant slop) to valuations.
+        `sigmoid(v) = 2 / (1 + exp(scale * (v - center)))`
+            Sigmoid places strong punishment to over-value.
+            Sigmoid transformation bounds very negative or positive valuation (decreasing slop).
+            `lower_bound` is not needed (can set to a big negative value).
+
     Returns
     -------
     numpy.array
         The suggested portfolio allocation.
     """
-    assert transformation in ['exponential', 'sigmoid'], "transformation must be 'exponential' or 'sigmoid'."
+    assert transformation in ['exponential', 'linear', 'sigmoid'], "transformation must be 'exponential', 'linear' or 'sigmoid'."
     assert scale > 0, "scale should be a positive value."
+    assert lower_bound < 0, "lower_bound should be a negative value."
 
     n_valuations = len(valuations)
     if n_valuations==0:
         return np.array([])
 
     ar_valuation = np.array(valuations).astype(float)
+    ar_valuation = np.where(ar_valuation < lower_bound, lower_bound, ar_valuation)
     # if no valid valuation, distribute equally
     if np.isnan(ar_valuation).sum() == n_valuations:
         ar_valuation.fill(1 / n_valuations)
@@ -169,12 +180,29 @@ def allocatePortfolio(valuations, transformation='sigmoid', scale=20, with_cash=
         assert (ar_weights < 0).sum() == 0, "weights shall be all non-negative values."
         assert ar_weights.sum() > 0, "Sum of weights shall be positive."
     else:
-        ar_weights = np.array([1/n_valuations]*n_valuations)
+        ar_weights = np.full(n_valuations, 1/n_valuations)
+
+    if scale is None:
+        if transformation=='sigmoid':
+            scale = 15
+        else:
+            scale = 5
 
     if transformation=='exponential':
-        ar_transformed = np.exp(- scale * ar_valuation)
+        ar = - scale * (ar_valuation - center)
+        ar = np.where(ar>100, 100, ar) # to prevent float overflow (up to 700)
+        ar_transformed = np.exp(ar)
     if transformation=='sigmoid':
-        ar_transformed = 1 / (1 + np.exp(scale * ar_valuation))
+        ar = scale * (ar_valuation - center)
+        ar = np.where(ar>100, 100, ar) # to prevent float overflow (up to 700)
+        ar_transformed = 2 / (1 + np.exp(ar))
+    if transformation=='linear':
+        def f(x, scale=scale, center=center):
+            if x > center:
+                return 1 / (scale * (x - center) + 1)
+            else:
+                return  1 - scale * (x - center)
+        ar_transformed = np.vectorize(f)(ar_valuation)
     
     ar_transformed = ar_transformed * ar_weights
 
@@ -182,50 +210,3 @@ def allocatePortfolio(valuations, transformation='sigmoid', scale=20, with_cash=
     np.nan_to_num(ar_portfolio, copy=False, nan=0.0)
 
     return ar_portfolio
-
-
-def _getGrowthWeight(annualized_return, growth_scale=1.0, min_pos_growth=0.01, min_neg_growth=-0.03):
-    """
-    Calculate linear weight based on annualized growth.
-
-    This functionality is still under evaluating, because it places too much punishment to instrumentw with low growth,
-    regardless of valuation. The result is almost identical to filter out instruments with low growth.
-
-    For `annualized_return > min_pos_growth`, weight linearly by `annualized_return * growth_scale`.
-    For `annualized_return` between `min_neg_growth` and `min_pos_growth`, weight linearly from
-        `(min_neg_growth, 0)` to `(min_pos_growth, min_pos_growth*growth_scale)`.
-    For `annualized_return <= min_pos_growth`, weight as 0.
-    If weights of all instruments are 0, then distribute the weights evenly.
-
-    Parameters
-    ----------
-    annualized_return : single-dimensional array like object
-        Annualized growth(return) of each instrument.
-    growth_scale : float
-    min_pos_growth : float
-    min_neg_growth : float
-
-    Returns
-    -------
-    numpy.array
-        The growth weight of each instrument.
-    """
-    if len(annualized_return) == 0:
-        return np.array([])
-
-    ar = np.array(annualized_return)
-    ar = np.where(
-        ar>= min_pos_growth,
-        ar * growth_scale,
-        np.where(
-            ar >= min_neg_growth,
-            min_pos_growth*growth_scale / (min_pos_growth-min_neg_growth) * (ar - min_neg_growth),
-            0
-        ))
-
-    ar_sum = np.nansum(ar)
-    if ar_sum == 0:
-        ar.fill(1 / len(ar))
-    else:
-        ar = ar / ar_sum
-    return ar
