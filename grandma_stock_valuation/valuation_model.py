@@ -165,10 +165,9 @@ class GrandmaStockValuation():
         n_train = len(df_train)
         if n_train > 1:
             if self.verbose > 1: LOGPRINT("Fit regression...")
-            x_train = range(n_train)
-            x_train_max = x_train.max()
-            x_train = np.array(x_train).reshape(-1, 1)
-
+            x_train = np.arange(n_train)
+            x_train_max = x_train[-1]
+            x_train = x_train.reshape(-1, 1)
             y_train = df_train['price'].to_numpy()
             if log:
                 y_train = np.log(y_train)
@@ -198,7 +197,7 @@ class GrandmaStockValuation():
             n_recent = len(df_recent)
             if n_recent > 0:
                 if self.verbose > 1: LOGPRINT("Extend trend to recent data.")
-                x_recent = (np.arange(0, n_recent) + x_train_max + 1).reshape(-1, 1)
+                x_recent = (np.arange(n_recent) + x_train_max + 1).reshape(-1, 1)
                 y_recent = lm.predict(x_recent)
                 df_recent['trend'] = np.exp(y_recent) if log else y_recent
                 df_recent['is_outlier'] = False
@@ -228,7 +227,7 @@ class GrandmaStockValuation():
             
         Returns
         -------
-        dict
+        dict of {str : float}
             Valuation metrics:
                 `R2_train`: R2 of the fitted model on train data, with outliers removed.
                 `train_years`: number of years actually used to fit the model.
@@ -237,20 +236,22 @@ class GrandmaStockValuation():
                 `fair_price`: most recent estimated price in the data, based on the fitted trend.
                 `over_value_range`: `(current_price / fair_price) - 1`
         """
-        df_train, df_recent = self._df_train.copy(), self._df_recent.copy()
+        df_train, df_recent = self._df_train, self._df_recent
 
         if len(df_train) > 1:
-            df_train_filter = df_train[~df_train['is_outlier']][['price','trend']]
-            self._r2_train = 1 - ((df_train_filter['price'] - df_train_filter['trend'])**2).sum() / ((df_train_filter['price'] - df_train_filter['price'].mean())**2).sum()
+            non_outlier = ~ df_train['is_outlier'].to_numpy()
+            price_filter = df_train['price'].to_numpy()[non_outlier]
+            trend_filter = df_train['trend'].to_numpy()[non_outlier]
+            self._r2_train = 1 - 1 - ((price_filter - trend_filter)**2).sum() / ((price_filter - price_filter.mean())**2).sum()
 
-            date_train_start = df_train['date'].min()
-            date_train_end = df_train['date'].max()
+            date_train_start = df_train['date'].iloc[0]
+            date_train_end = df_train['date'].iloc[-1]
             self._train_years = (date_train_end - date_train_start).days / 365
             trend_train_start = df_train['trend'].iloc[0]
             trend_train_end = df_train['trend'].iloc[-1]
             self._annualized_growth = (trend_train_end / trend_train_start)**(1/self._train_years) - 1
 
-            df_combine = pd.concat([df_train, df_recent]).reset_index(drop=True)
+            df_combine = pd.concat([df_train, df_recent], ignore_index=True, copy=False)
             self._current_price = df_combine['price'].iloc[-1]
             self._fair_price = df_combine['trend'].iloc[-1]
             self._over_value_range = self._current_price / self._fair_price - 1
@@ -290,7 +291,7 @@ class GrandmaStockValuation():
 
     def plotTrendline(self, title='Price and Trend', **kwargs):
         """
-        Plot the data with outliers and fitted trend.
+        Plot the data with fitted trend, and outliers highlighted.
 
         This function needs to be executed after `fitTransform()`.
 
@@ -306,27 +307,32 @@ class GrandmaStockValuation():
         Figure
             A plotly figure object of the plot.
         """
-        df_train, df_recent = self._df_train.copy(), self._df_recent.copy()
         fig = go.Figure()
 
-        if len(df_train) > 1:
+        if len(self._df_train) > 1:
+            ar_date_train = self._df_train['date'].to_numpy()
+            ar_price_train = self._df_train['price'].to_numpy()
+            ar_trend_train = self._df_train['trend'].to_numpy()
+            ar_date_recent = self._df_recent['date'].to_numpy()
+            ar_price_recent = self._df_recent['price'].to_numpy()
+            ar_trend_recent = self._df_recent['trend'].to_numpy()
+            
+            fig.add_trace(go.Scatter(x=ar_date_train, y=ar_price_train, name='Historic Price',
+                                     line=dict(color='palegreen', width=1)))
 
-            fig.add_trace(go.Scatter(x=df_train['date'], y=df_train['price'], name='Historic Price',
-                                    line=dict(color='palegreen', width=1)))
+            is_outlier = self._df_train['is_outlier'].to_numpy()
+            ar_price_outlier = np.where(is_outlier, ar_price_train, np.nan)
+            fig.add_trace(go.Scatter(x=ar_date_train, y=ar_price_outlier, name='Outlier',
+                                     line=dict(color='red', width=1)))
 
-            df_outlier = df_train[['date','price']].copy()
-            index_outlier = df_train['is_outlier']
-            df_outlier.loc[~index_outlier, 'price'] = None
-            fig.add_trace(go.Scatter(x=df_outlier['date'], y=df_outlier['price'], name='Outlier',
-                                    line=dict(color='red', width=1)))
+            if len(self._df_recent) > 0:
+                fig.add_trace(go.Scatter(x=ar_date_recent, y=ar_price_recent, name='Recent Price',
+                                         line=dict(color='cyan', width=1)))
 
-            if len(df_recent) > 0:
-                fig.add_trace(go.Scatter(x=df_recent['date'], y=df_recent['price'], name='Recent Price',
-                                        line=dict(color='cyan', width=1)))
-
-            df_trend = pd.concat([df_train, df_recent])[['date','trend']].reset_index(drop=True)
-            fig.add_trace(go.Scatter(x=df_trend['date'], y=df_trend['trend'], name='Trend',
-                                    line=dict(color='lightsalmon', width=1)))
+            ar_date_total = np.concatenate((ar_date_train, ar_date_recent))
+            ar_date_total = np.concatenate((ar_trend_train, ar_trend_recent))
+            fig.add_trace(go.Scatter(x=ar_date_total, y=ar_date_total, name='Trend',
+                                     line=dict(color='lightsalmon', width=1)))
 
             fig.update_layout(template='plotly_dark', title=title, xaxis_title='date', yaxis_title='price', **kwargs)
         
