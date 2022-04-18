@@ -3,6 +3,7 @@ __pycache__
 _data
 _log
 _output
+_image
 __temp*
 _temp*
 .ipynb_checkpoints*

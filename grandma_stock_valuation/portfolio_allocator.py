@@ -4,27 +4,23 @@ Construct a portfolio based on valuation of a group of instruments.
 
 import numpy as np
 import pandas as pd
-import logging
+from logging import WARNING
 from itertools import permutations
+from . import grandma_base
 
-
-def _printLevel(*args, level=logging.INFO):
-    """
-    A wrapper over `print` to support `level` argument.
-    """
-    print(*args)
-
+LOGPRINT = grandma_base.logger.logPandas
 
 def getCorrelationWeight(
     d_instrument_prices,
-    price_col='close_adj',
+    price_col='close',
+    is_positive=False,
+    is_sorted=False,
     recent_months=0,
     train_years=10,
     date_end=None,
     with_cash=False,
     cash_name='cash',
-    verbose=2,
-    printfunc=_printLevel
+    verbose=0
 ) -> dict:
     """
     Caculate weight of each instrument based on correlation with other instruments.
@@ -37,10 +33,15 @@ def getCorrelationWeight(
     d_instrument_prices : dict
         Dictionary with the daily price data of each instrument.
         The keys are the tickers of the instruments, and the values are dataframes with the daily price.
-        The dataframe should contain a `date` column and a price column named by `price_col`.
+        The dataframe should contain a `date` column (datetime64) and a price column named by `price_col` (float).
     price_col : str
         The column name in `input_data` to indicate daily price.
-        Suggest to use the adjusted price.
+    is_positive : bool
+        Indicate whether the input data has all positive price values.
+        If False, the script will filter out non-positive price values.
+    is_sorted : bool
+        Indicate whether the input data has already been sorted by date.
+        If False, the script will do the sorting.
     recent_months : int
         Number of recent months, before `date_end`, to exclude from correlation computation.
     train_years : int
@@ -54,58 +55,60 @@ def getCorrelationWeight(
         Name of cash to be presented as key in the output dictionary.
     verbose : int
         2 to print detailed information; 1 to print high-level information; 0 to suppress print.
-    printfunc : func
-        Function to output messages, which should support the `level` argument.
 
     Returns
     -------
-    dict[str : float]
+    dict of {str : float}
         Weight allocated to each instrument (ticker).
     """
     if len(d_instrument_prices) == 0:
-        d_weight = {}
         if with_cash:
-            d_weight[cash_name] = 1
-        return d_weight
+            return {cash_name:1}
+        else:
+            return {}
 
     if len(d_instrument_prices) == 1:
-        d_cor_agg = {t:1 for t in d_instrument_prices}
+        if with_cash:
+            return {**{t:0.5 for t in d_instrument_prices}, **{cash_name:0.5}}
+        else:
+            return {t:1 for t in d_instrument_prices}
 
-    else:
+    date_fit_end =  max(map(lambda df:df['date'].max(), d_instrument_prices.values()))
+    if date_end is not None:
+        date_fit_end = min(pd.to_datetime(date_end), date_fit_end)
+    date_fit_end = date_fit_end.floor('D') + pd.DateOffset(days=1) - pd.DateOffset(months=recent_months)
+    date_fit_start = date_fit_end - pd.DateOffset(years=train_years)
+    
+    d_cleaned_prices = {}
+    for ticker, df in d_instrument_prices.items():
+        df = df[['date', price_col]].copy()
 
-        d_cleaned_prices = {}
-        for ticker, df in d_instrument_prices.items():
-            df['date'] = pd.to_datetime(df['date'])
-            df = df[df[price_col]>0].sort_values('date').reset_index(drop=True)
+        if not is_positive:
+            df = df[df[price_col]>0].reset_index(drop=True)
+        if not is_sorted:
+            df.sort_values('date', inplace=True, ignore_index=True)
+        df = df[(df['date']>=date_fit_start) & (df['date']<date_fit_end)].reset_index(drop=True)
 
-            if date_end is not None:
-                date_fit_end = min(pd.to_datetime(date_end), df['date'].max())
-            else:
-                date_fit_end = df['date'].max()
-            date_fit_end = date_fit_end.floor('D') + pd.DateOffset(days=1) - pd.DateOffset(months=recent_months)
-            date_fit_start = date_fit_end - pd.DateOffset(years=train_years)
-            df = df[(df['date']>=date_fit_start) & (df['date']<date_fit_end)][['date', price_col]].reset_index(drop=True)
+        if len(df)==0:
+            if verbose > 0: LOGPRINT(f"{ticker} has no data in the specified period!", level=WARNING)
+        else:
+            if verbose > 1: LOGPRINT(f"{ticker}: Selected {len(df)} rows over {df['date'].nunique()} dates from {df['date'].min().date()} to {df['date'].max().date()}.")
+            d_cleaned_prices[ticker] = df
 
-            if len(df)==0:
-                printfunc(f"{ticker} has no data in the specified period!", level=logging.WARNING)
-            else:
-                if verbose > 1: printfunc(f"{ticker}: Selected {len(df)} rows over {df['date'].nunique()} dates from {df['date'].min().date()} to {df['date'].max().date()}.")
-                d_cleaned_prices[ticker] = df
+    d_cor_detail = {t:{} for t in d_cleaned_prices}
+    for ticker1, ticker2 in permutations(d_cleaned_prices, 2):
+        df1 = d_cleaned_prices[ticker1].rename(columns={price_col:'price1'})
+        df2 = d_cleaned_prices[ticker2].rename(columns={price_col:'price2'})
+        df = df1.merge(df2, 'inner', 'date', copy=False)
+        if len(df)>1:
+            cor = df['price1'].corr(df['price2'], method='pearson')
+        else:
+            cor = 1
 
-        d_cor_detail = {t:{} for t in d_cleaned_prices}
-        for ticker1, ticker2 in permutations(d_cleaned_prices, 2):
-            df1 = d_cleaned_prices[ticker1].rename(columns={price_col:'price1'})
-            df2 = d_cleaned_prices[ticker2].rename(columns={price_col:'price2'})
-            df = df1.merge(df2, 'inner', 'date')
-            if len(df)>1:
-                cor = df['price1'].corr(df['price2'], method='pearson')
-            else:
-                cor = 1
+        d_cor_detail[ticker1][ticker2] = cor
+        d_cor_detail[ticker2][ticker1] = cor
 
-            d_cor_detail[ticker1][ticker2] = cor
-            d_cor_detail[ticker2][ticker1] = cor
-
-        d_cor_agg = {t:sum([1-v for v in d_cor.values()]) for t, d_cor in d_cor_detail.items()}
+    d_cor_agg = {t:sum([1-v for v in d_cor.values()]) for t, d_cor in d_cor_detail.items()}
 
     total_cor = sum(d_cor_agg.values())
     non_cash_weight = len(d_cor_agg) / (len(d_cor_agg)+1) if with_cash else 1.0
@@ -117,7 +120,7 @@ def getCorrelationWeight(
     return d_weight
 
 
-def allocatePortfolio(valuations, transformation='sigmoid', scale=None, center=-0.1, lower_bound=-0.3, weights=None) -> np.array:
+def allocatePortfolio(valuations, transformation='exponential', scale=None, center=-0.07, lower_bound=-0.2, weights=None) -> np.array:
     """
     Determine the portfolio allocation based on valuations of a group of instruments.
 
@@ -131,7 +134,9 @@ def allocatePortfolio(valuations, transformation='sigmoid', scale=None, center=-
         Larger `scale` gives more weight to more under-valued instruments. Should be a positive value.
         if `None`, default based on `transformation`:
             'sigmoid' : default to 15
-            'linear' or 'exponential' : default to 5
+            'linear' : default to 3.5
+            'exponential' : default to 3.2
+            The above will result in weight close to 1.9 at -0.2 valuation.
     center : float
         At this value, `trasformation(center) = 1`
     lower_bound : float
@@ -156,7 +161,6 @@ def allocatePortfolio(valuations, transformation='sigmoid', scale=None, center=-
         The suggested portfolio allocation.
     """
     assert transformation in ['exponential', 'linear', 'sigmoid'], "transformation must be 'exponential', 'linear' or 'sigmoid'."
-    assert scale > 0, "scale should be a positive value."
     assert lower_bound < 0, "lower_bound should be a negative value."
 
     n_valuations = len(valuations)
@@ -185,8 +189,12 @@ def allocatePortfolio(valuations, transformation='sigmoid', scale=None, center=-
     if scale is None:
         if transformation=='sigmoid':
             scale = 15
+        if transformation=='linear':
+            scale = 4.5
         else:
-            scale = 5
+            scale = 3.2
+    else:
+        assert scale > 0, "scale should be a positive value."
 
     if transformation=='exponential':
         ar = - scale * (ar_valuation - center)

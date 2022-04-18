@@ -313,10 +313,6 @@ class GrandmaStockValuation():
             ar_date_train = self._df_train['date'].to_numpy()
             ar_price_train = self._df_train['price'].to_numpy()
             ar_trend_train = self._df_train['trend'].to_numpy()
-            ar_date_recent = self._df_recent['date'].to_numpy()
-            ar_price_recent = self._df_recent['price'].to_numpy()
-            ar_trend_recent = self._df_recent['trend'].to_numpy()
-            
             fig.add_trace(go.Scatter(x=ar_date_train, y=ar_price_train, name='Historic Price',
                                      line=dict(color='palegreen', width=1)))
 
@@ -326,12 +322,19 @@ class GrandmaStockValuation():
                                      line=dict(color='red', width=1)))
 
             if len(self._df_recent) > 0:
+                ar_date_recent = self._df_recent['date'].to_numpy()
+                ar_price_recent = self._df_recent['price'].to_numpy()
+                ar_trend_recent = self._df_recent['trend'].to_numpy()
                 fig.add_trace(go.Scatter(x=ar_date_recent, y=ar_price_recent, name='Recent Price',
                                          line=dict(color='cyan', width=1)))
+                
+                ar_date_total = np.concatenate((ar_date_train, ar_date_recent))
+                ar_trend_total = np.concatenate((ar_trend_train, ar_trend_recent))
+            else:
+                ar_date_total = ar_date_train
+                ar_trend_total = ar_trend_train
 
-            ar_date_total = np.concatenate((ar_date_train, ar_date_recent))
-            ar_date_total = np.concatenate((ar_trend_train, ar_trend_recent))
-            fig.add_trace(go.Scatter(x=ar_date_total, y=ar_date_total, name='Trend',
+            fig.add_trace(go.Scatter(x=ar_date_total, y=ar_trend_total, name='Trend',
                                      line=dict(color='lightsalmon', width=1)))
 
             fig.update_layout(template='plotly_dark', title=title, xaxis_title='date', yaxis_title='price', **kwargs)
@@ -341,12 +344,11 @@ class GrandmaStockValuation():
 
 def batchValuation(
     d_instrument_data,
-    init_parameters={'recent_months':0, 'train_years':10, 'min_train_years':5, 'date_end':None},
-    fit_parameters={'price_col':'close_adj', 'log':True, 'n_std':1.5},
-    draw_figure=True,
-    save_result=True,
-    metric_file = None,
-    figure_folder = None,
+    init_parameters=dict(recent_months=0, train_years=10, min_train_years=5, date_end=None),
+    fit_parameters=dict(price_col='close', is_positive=False, is_sorted=False, log=True, n_std=1),
+    draw_figure=False,
+    save_result=False,
+    figure_folder=None,
     verbose=0,
     **kwargs
 ) -> Tuple[pd.DataFrame, dict]:
@@ -363,15 +365,12 @@ def batchValuation(
     fit_parameters : dict
         Parameters passed to `GrandmaStockValuation.fitTransform()`.
     draw_figure : bool
-        If True, generate price chart with trend.
+        If True, generate price chart with trend of each instrument.
     save_result : bool
-        If True, save the valuation metrics and figures to files.
-    metric_file : str
-        File to store the valuation metrics.
-        If `None`, save to the default location "_output/valuation_metrics_<today>.csv".
+        If True, save the figures to files.
     figure_folder : str
         Folder to store the price charts of each instruments.
-        If `None`, save to the default folder "_output/images/"
+        If `None`, save to the default folder "_images/"
     verbose : int
         2 to print detailed information; 1 to print high-level information; 0 to suppress print.
     **kwargs
@@ -380,56 +379,38 @@ def batchValuation(
     Returns
     -------
     pandas.DataFrame
-        A table containing valuation, which is the output of `GrandmaStockValuation.evaluateValuation()`, of each instrument.
-    dict (str : figure)
+        A table containing valuation, which is the output of `GrandmaStockValuation.evaluateValuation()` of each instrument.
+    dict of {str : figure}
         A dictionary containing the price chart, which is the output of `GrandmaStockValuation.plotTrendline()`, of each instrument.
-        The keys are the tickers, and values are the figures.
+        The keys are the tickers, and values are the plotly figures.
     """
-    if metric_file is None:
-        metric_file = path.join(DEFAULT_IMAGE_FOLDER, f'valuation_metrics_{date.today()}.csv')
-        _createDefaultOutputFolder()
-    
-    if figure_folder is None:
-        figure_folder = path.join(DEFAULT_IMAGE_FOLDER, 'images')
-        _createDefaultOutputFolder()
-
     l_metrics = []
     d_fig = {}
     for ticker, df in d_instrument_data.items():
-
         if verbose > 0: LOGPRINT(f"Valuating {ticker}...")
         grandma = GrandmaStockValuation(verbose=verbose, **init_parameters)
         grandma.fitTransform(df, **fit_parameters)
         d_metrics = grandma.evaluateValuation()
-        df_metrics = pd.Series({'ticker':ticker, **d_metrics}).to_frame().T
-        l_metrics.append(df_metrics)
+        l_metrics.append({'ticker':ticker, **d_metrics})
 
         if draw_figure:
             fig = grandma.plotTrendline(title=ticker, **kwargs)
             d_fig[ticker] = fig
+
             if save_result:
+                if figure_folder is None:
+                    figure_folder = DEFAULT_IMAGE_FOLDER
+                if not path.exists(figure_folder):
+                    mkdir(figure_folder)
                 fig.write_image(path.join(figure_folder, f'{ticker}.jpeg'))
     
-    df_metrics = pd.concat(l_metrics, ignore_index=True)
-    if save_result: df_metrics.to_csv(metric_file, index=False)
+    df_metrics = pd.DataFrame(l_metrics)
 
     return df_metrics, d_fig
 
 
-def _createDefaultOutputFolder():
-    """
-    Create the default output folders if not existed.
-    """
-    if not path.exists(DEFAULT_IMAGE_FOLDER):
-        mkdir(DEFAULT_IMAGE_FOLDER)
-
-    image_folder = path.join(DEFAULT_IMAGE_FOLDER, 'images')
-    if not path.exists(image_folder):
-        mkdir(image_folder)
-
-
 def addCashPortfolio(df_valuation_metrics, id_col='ticker', cash_name='cash',
-                     growth_col='annualized_growth', growth_value=0.0,
+                     growth_col=None, growth_value=0.0,
                      value_col='over_value_range', cash_value=0.0) -> pd.DataFrame:
     """
     Add cash into the valuation metrics of an existing portfolio.
@@ -456,7 +437,7 @@ def addCashPortfolio(df_valuation_metrics, id_col='ticker', cash_name='cash',
     Returns
     -------
     pandas.DataFrame
-        The updated valuation metrics with an additonal row indicating cahs.
+        The updated valuation metrics with an additonal row indicating cash.
     """
     d_cash = {id_col:cash_name, value_col:cash_value}
     if growth_col is not None:
@@ -472,51 +453,7 @@ def addCashPortfolio(df_valuation_metrics, id_col='ticker', cash_name='cash',
     return df_portfolio
 
 
-def adjValueWithGrowth(over_value_range, annualized_growth, method='subtract', growth_scale=None):
-    """
-    Adjust `over_value_range` with `annualized_growth` by the specified `method`.
-
-    If `method='subtract'`, refer to `_subtractValueGrowth()`.
-    If `method='divide'`, refer to `_divideValueGrowth()`.
-
-    Parameters
-    ----------
-    over_value_range : single-dimensional array like object
-        Valuations of a group of instruments.
-        It is usually the `over_value_range` column in the output of `grandma_stock_valuation.batchValuation()` function.
-    annualized_growth : single-dimensional array like object
-        Annualized growth of each instrument, whose order should be aligned with the values in `over_value_range`.
-    method : str
-        The method to adjust the valuation. Can be "subtract" or "divide".
-    growth_scale : float
-        The scale used to adjust annualized growth before being subtracted.
-        If `method='subtract'`, default to 1.
-        If `method='divide'`, default to 0.1.
-
-    Returns
-    -------
-    numpy.array
-        Over-value score adjusted by annualized growth of each instrument.
-    """
-    assert method in ['subtract', 'divide'], "method should be 'subtract' or 'divide'."
-
-    over_value_range = np.array(over_value_range)
-    annualized_growth = np.array(annualized_growth)
-    assert len(over_value_range) == len(annualized_growth), "valuations and growth should be the same length and in the smae order."
-
-    if growth_scale is None:
-        if method == 'subtract':
-            growth_scale = 1
-        else:
-            growth_scale = 0.1
-
-    if method == 'subtract':
-        return _subtractValueGrowth(over_value_range, annualized_growth, growth_scale)
-    else:
-        return _divideValueGrowth(over_value_range, annualized_growth, growth_scale)
-
-
-def _subtractValueGrowth(over_value_range, annualized_growth, growth_scale):
+def subtractValueGrowth(over_value_range, annualized_growth, growth_scale=1):
     """
     Adjust `over_value_range` with `annualized_growth` by subtraction.
 
@@ -537,11 +474,14 @@ def _subtractValueGrowth(over_value_range, annualized_growth, growth_scale):
     numpy.array
         Over-value score adjusted by annualized growth of each instrument.
     """
+    over_value_range = np.array(over_value_range)
+    annualized_growth = np.array(annualized_growth)
+    assert len(over_value_range) == len(annualized_growth), "valuations and growth should be the same length and in the smae order."
 
-    return over_value_range - growth_scale*annualized_growth
+    return over_value_range - growth_scale * annualized_growth
     
 
-def _divideValueGrowth(over_value_range, annualized_growth, growth_scale=0.2):
+def divideValueGrowth(over_value_range, annualized_growth, growth_scale=0.1):
     """
     Calculate `over_value_years` based on `over_value_range` and `annualized_growth`.
 
@@ -575,6 +515,10 @@ def _divideValueGrowth(over_value_range, annualized_growth, growth_scale=0.2):
     numpy.array
         Over-value score adjusted by annualized growth of each instrument.
     """
+    over_value_range = np.array(over_value_range)
+    annualized_growth = np.array(annualized_growth)
+    assert len(over_value_range) == len(annualized_growth), "valuations and growth should be the same length and in the smae order."
+
     def _calc_one_overvalue_year(t_values, growth_scale=growth_scale):
         _over_value_range, _annualized_growth = t_values
         if _over_value_range >= 0:
