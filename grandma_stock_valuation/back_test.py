@@ -1,7 +1,6 @@
 """
 Back test of Grandma Stock Valuation and Grandma Portfolio Allocation.
 """
-
 import numpy as np
 import pandas as pd
 import plotly.express as px
@@ -135,6 +134,8 @@ class GrandmaBackTester():
         """
         Update value of portfolio with updated instrument prices.
         """
+        df_portfolio_i = df_portfolio_i.copy() # This copy is necessary
+
         new_price = df_instrument_prices.iloc[index_i]
         new_price.index = new_price.index.str.replace('price_','')
         new_price = new_price.to_dict()
@@ -286,12 +287,12 @@ class GrandmaBackTester():
         cols_first, cols_fill = ['date','ticker'], ['portfolio_allocation', 'current_value']
         self.df_adjustments = pd.concat(l_adjustments, ignore_index=True, copy=False)
         self.df_adjustments = self.df_adjustments[cols_first + list(self.df_adjustments.columns.drop(cols_first))]
-        self.df_adjustments[cols_fill].fillna(0, inplace=True)
+        self.df_adjustments[cols_fill] = self.df_adjustments[cols_fill].fillna(0) # use inplace resulted in warning
 
         cols_first, cols_fill = ['date','ticker'], ['current_value', 'current_portfolio_pct']
         self.df_portfolio = pd.concat(l_portfolio, ignore_index=True, copy=False)
         self.df_portfolio = self.df_portfolio[cols_first + list(self.df_portfolio.columns.drop(cols_first))]
-        self.df_portfolio[cols_fill].fillna(0, inplace=True)
+        self.df_portfolio[cols_fill] = self.df_portfolio[cols_fill].fillna(0)
 
         self.df_average_value = self.df_portfolio.groupby('ticker')['current_value'].mean().fillna(0).reset_index()
         self.df_average_value['avg_pct_allocation'] = self.df_average_value['current_value'] / self.df_average_value['current_value'].sum()
@@ -307,12 +308,12 @@ class GrandmaBackTester():
         cols_adj = ['date', 'ticker', 'train_years', 'annualized_growth', 'over_value_range', 'over_value_score', 'weight', 'portfolio_allocation']
         df_adjs = self.df_adjustments[cols_adj].copy()
 
-        df_adjs['train_years'] = df_adjs['train_years'].astype(float, copy=False).round(1).astype(str, copy=False)
-        df_adjs['annualized_growth'] = (100*df_adjs['annualized_growth'].astype(float, copy=False)).round(1).astype(str, copy=False)
-        df_adjs['over_value_range'] = (100*df_adjs['over_value_range'].astype(float, copy=False)).round(1).astype(str, copy=False)
-        df_adjs['over_value_score'] = df_adjs['over_value_score'].astype(float, copy=False).round(2).astype(str, copy=False)
-        df_adjs['weight'] = df_adjs['weight'].astype(float, copy=False).round(2).astype(str, copy=False)
-        df_adjs['portfolio_allocation'] = (100*df_adjs['portfolio_allocation'].astype(float, copy=False)).round(1).astype(str, copy=False)
+        df_adjs['train_years'] = df_adjs['train_years'].astype(float).round(1).astype(str)
+        df_adjs['annualized_growth'] = (100*df_adjs['annualized_growth'].astype(float)).round(1).astype(str)
+        df_adjs['over_value_range'] = (100*df_adjs['over_value_range'].astype(float)).round(1).astype(str)
+        df_adjs['over_value_score'] = df_adjs['over_value_score'].astype(float).round(2).astype(str)
+        df_adjs['weight'] = df_adjs['weight'].astype(float).round(2).astype(str)
+        df_adjs['portfolio_allocation'] = (100*df_adjs['portfolio_allocation'].astype(float)).round(1).astype(str)
 
         df_adjs['adj_hover_text'] = ''
 
@@ -322,7 +323,7 @@ class GrandmaBackTester():
         df_adjs.loc[index_train, 'adj_hover_text'] = df_adjs['train_text'][index_train] + '<br>'
 
         index_value = df_adjs['over_value_score']!='nan'
-        df_adjs['value_text'] = 'weight = ' + df_adjs['weight'] + '; valuation = ' + df_adjs['over_value_score'] + ' yrs'
+        df_adjs['value_text'] = 'weight = ' + df_adjs['weight'] + '; valuation score = ' + df_adjs['over_value_score']
         df_adjs.loc[index_value, 'adj_hover_text'] = (df_adjs['adj_hover_text'] + df_adjs['value_text'])[index_value] + '<br>'
 
         df_adjs['adj_hover_text'] = df_adjs['adj_hover_text'] + df_adjs['portfolio_allocation']  + '% Portfolio'
@@ -339,7 +340,7 @@ class GrandmaBackTester():
         df_grandma_growth['ticker'] = 'cash' # to merge with cash % for hover text display
         df_grandma_growth = df_grandma_growth.merge(df_daily_portfolio_pct, 'left', ['date','ticker']).fillna(0)
         df_grandma_growth.rename(columns={'current_portfolio_pct':'hover_text'}, inplace=True)
-        df_grandma_growth['hover_text'] = (100*df_grandma_growth['hover_text'].astype(float, copy=False)).round(1).astype(str, copy=False) + '% Cash'
+        df_grandma_growth['hover_text'] = (100*df_grandma_growth['hover_text'].astype(float)).round(1).astype(str) + '% Cash'
 
         ## growth of each instrument
         df_instrument_growth = self._df_instrument_prices.iloc[self._index_start:].copy()
