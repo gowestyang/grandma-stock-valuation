@@ -90,7 +90,7 @@ class YahooDataLoader():
             self._date_start = pd.to_datetime(self.date_start).floor('D')
         else:
             if len(df0)>0:
-                self._date_start = df0['date'].max().floor('D') + pd.DateOffset(days=1)
+                self._date_start = df0['date'].max().floor('D')
             else:
                 LOGPRINT(f'If date_start if None, {file_name} must contain data with a date column.', level=ERROR)
                 raise Exception('Incorrect inputs.')

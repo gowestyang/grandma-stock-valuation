@@ -30,7 +30,7 @@ def getCorrelationWeight(
 
     Parameters
     ----------
-    d_instrument_prices : dict
+    d_instrument_prices : dict of {str : pandas.DataFrame}
         Dictionary with the daily price data of each instrument.
         The keys are the tickers of the instruments, and the values are dataframes with the daily price.
         The dataframe should contain a `date` column (datetime64) and a price column named by `price_col` (float).

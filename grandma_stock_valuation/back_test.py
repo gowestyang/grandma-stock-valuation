@@ -19,21 +19,43 @@ class GrandmaBackTester():
 
     def __init__(self, backtest_years=10, adjust_freq_months=1,
                  init_parameters=dict(recent_months=0, train_years=10, min_train_years=5, date_end=None),
-                 fit_parameters=dict(price_col='close', is_positive=False, is_sorted=False, log=True, n_std=1),
+                 fit_parameters=dict(price_col='close', is_positive=False, is_sorted=False, log=True, n_std=1.0),
                  adjust_growth_func=subtractValueGrowth,
-                 growth_scale=1,
-                 allocation_parameters=dict(transformation='exponential', scale=None, center=-0.07, lower_bound=-0.2),
+                 growth_scale=1.0,
+                 allocation_parameters=dict(transformation='exponential', scale=None, center=-0.07, lower_bound=-0.2, weights=None),
                  with_cash=False,
-                 cash_parameters = dict(cash_value=0.0),
+                 cash_parameters=dict(cash_value=0.0),
                  with_correlation_weights=False,
-                 verbose=0):
+                 verbose=0) -> None:
         """
         Initialize the back tester.
 
         Parameters
         ----------
-        xxxxx
-
+        backtest_years : int
+            Total number of years to backtest.
+        adjust_freq_months : int
+            Frequency to adjust portfolio allocation, in number of months.
+        init_parameters : dict
+            Parameters passed to `GrandmaStockValuation` at initialization.
+        fit_parameters : dict
+            Parameters passed to `GrandmaStockValuation.fitTransform()`.
+        adjust_growth_func : function
+            Function to adjust valuation with annualized grwoth.
+            Can be either `subtractValueGrowth` or `divideValueGrowth`.
+            If a customized function, it should support `over_value_range`, `annualized_growth` and `growth_scale` parameters.
+        growth_scale : float
+            `growth_scale` to pass to `adjust_growth_func`.
+        allocation_parameters : dict
+            Parameters passed to `allocatePortfolio()`.
+        with_cash : bool
+            Flag to indicate whether to have cash as part of the portfolio.
+        cash_parameters : dict
+            Parameters passed to `addCashPortfolio()`.
+            Currently only `cash_value` is used.
+        with_correlation_weights : bool
+            Indicate whether to use correlation weights from `getCorrelationWeight()`.
+            Only works if `allocation_parameters[weights]` is set to None.
         verbose : int
             2 to print detailed information; 1 to print high-level information; 0 to suppress print.
         """
@@ -187,8 +209,8 @@ class GrandmaBackTester():
         )
 
         df_metrics_i['over_value_score'] = self.adjust_growth_func(
-            df_metrics_i['over_value_range'],
-            df_metrics_i['annualized_growth'],
+            over_value_range=df_metrics_i['over_value_range'],
+            annualized_growth=df_metrics_i['annualized_growth'],
             growth_scale=self.growth_scale
             )
         
@@ -197,21 +219,23 @@ class GrandmaBackTester():
         if self.with_cash:
             df_metrics_i = addCashPortfolio(df_metrics_i, value_col='over_value_score', cash_value=self.cash_parameters['cash_value'])
 
-        if self.with_correlation_weights:
-            weights = getCorrelationWeight(
-                d_instrument_prices={k:v for k,v in d_instrument_data_i.items() if k in valid_tickers},
-                price_col=self._price_col,
-                is_positive=True,
-                is_sorted=True,
-                recent_months=self.init_parameters['recent_months'],
-                train_years=self.init_parameters['train_years'],
-                with_cash=self.with_cash,
-                verbose=self.verbose - 1
-            )
-        else:
-            n_inst = len(valid_tickers) + self.with_cash
-            w_inst = 1/n_inst if n_inst>0 else np.nan
-            weights = {t:w_inst for t in valid_tickers + ['cash']*self.with_cash}
+        weights = self.allocation_parameters.get('weights')
+        if weights is None:
+            if self.with_correlation_weights:
+                weights = getCorrelationWeight(
+                    d_instrument_prices={k:v for k,v in d_instrument_data_i.items() if k in valid_tickers},
+                    price_col=self._price_col,
+                    is_positive=True,
+                    is_sorted=True,
+                    recent_months=self.init_parameters['recent_months'],
+                    train_years=self.init_parameters['train_years'],
+                    with_cash=self.with_cash,
+                    verbose=self.verbose - 1
+                )
+            else:
+                n_inst = len(valid_tickers) + self.with_cash
+                w_inst = 1/n_inst if n_inst>0 else np.nan
+                weights = {t:w_inst for t in valid_tickers + ['cash']*self.with_cash}
 
         df_metrics_i['weight'] = df_metrics_i['ticker'].map(weights)
 
@@ -226,14 +250,17 @@ class GrandmaBackTester():
         return df_metrics_i
 
 
-    def runBackTest(self, d_instrument_data):
+    def runBackTest(self, d_instrument_data) -> None:
         """
         Run back test.
 
         Parameters
         ----------
-        d_instrument_data : dict
-            xxxx
+        d_instrument_data : dict of {str : pandas.DataFrame}
+        Dictionary with the daily price data of each instrument.
+        The keys are the tickers of the instruments, and the values are dataframes with the daily price.
+        The dataframe should contain a `date` column (datetime64) and a price column named by `price_col` (float).
+        `price_col` is defined in `fit_parameters` at initialization.
         """
         self._cleanInputData(d_instrument_data)
 
@@ -303,6 +330,16 @@ class GrandmaBackTester():
         """
         Plot back test results. Should be run after `runBackTest()`.
 
+        Parameters
+        ----------
+        **kwargs
+            Key-word arguments passed to plotly's `update_layout()` function.
+            For example, `width=1000` to change width of the output figure.
+
+        Returns
+        -------
+        plotly figure
+            The ploted backtest figure.
         """
         # prepare hover text of portfolio adjustments
         cols_adj = ['date', 'ticker', 'train_years', 'annualized_growth', 'over_value_range', 'over_value_score', 'weight', 'portfolio_allocation']

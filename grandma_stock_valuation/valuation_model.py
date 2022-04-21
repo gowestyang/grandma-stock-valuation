@@ -300,7 +300,8 @@ class GrandmaStockValuation():
         title : str
             Title of the plot.
         **kwargs
-            Additional key-word arguments passed to plotly's `update_layout` function. 
+            Additional key-word arguments passed to plotly's `update_layout()` function.
+            For example, `width=1000` to change width of the output figure.
             
         Returns
         -------
@@ -357,7 +358,7 @@ def batchValuation(
 
     Parameters
     ----------
-    d_instrument_data : dict (str : pandas.dataframe)
+    d_instrument_data : dict of {str : pandas.dataframe}
         A dictionary containing the daily price of a group of instruments.
         Each key should be a ticker, and its value should be the daily price data of the ticker.
     init_parameters : dict
